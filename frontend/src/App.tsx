@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { spotifyAuth } from './services/spotifyAuth';
 import { apiService } from './services/api';
-import type { PlaylistInfo, TrackData, ClusterProfile, Recommendation } from './services/api';
+import type { PlaylistInfo, TrackData, AnalysisResponse } from './services/api';
 import { Layout } from './components/Layout';
 import { PlaylistGrid } from './components/PlaylistGrid';
 import { ScatterPlotWidget } from './components/Dashboard/ScatterPlotWidget';
@@ -27,12 +27,7 @@ function App() {
   
   // Analysis States
   const [kValue, setKValue] = useState<number>(3);
-  const [analysisData, setAnalysisData] = useState<{
-    tracks: TrackData[];
-    clusters: ClusterProfile[];
-    recommendations: Recommendation[];
-    llm_active?: boolean;
-  } | null>(null);
+  const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 

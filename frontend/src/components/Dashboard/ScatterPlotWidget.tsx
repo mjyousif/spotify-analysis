@@ -63,10 +63,31 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
 
   const handlePlotClick = (data: any) => {
     if (data.points && data.points.length > 0) {
-      const trackId = data.points[0].customdata;
-      const clickedTrack = tracks.find(t => t.id === trackId);
-      if (clickedTrack) {
-        onSelectTrack(clickedTrack);
+      const point = data.points[0];
+      const curveNumber = point.curveNumber;
+      const pointIndex = point.pointIndex;
+
+      // 1. Primary resolution using curveNumber (trace index) and pointIndex
+      if (typeof curveNumber === 'number' && typeof pointIndex === 'number') {
+        const cluster = clusters[curveNumber];
+        if (cluster) {
+          const clusterTracks = tracks.filter(t => t.cluster === cluster.cluster_id);
+          const clickedTrack = clusterTracks[pointIndex];
+          if (clickedTrack) {
+            onSelectTrack(clickedTrack);
+            return;
+          }
+        }
+      }
+
+      // 2. Fallback resolution using customdata
+      const rawCustomData = point.customdata;
+      const trackId = Array.isArray(rawCustomData) ? rawCustomData[0] : rawCustomData;
+      if (trackId) {
+        const clickedTrack = tracks.find(t => t.id === trackId);
+        if (clickedTrack) {
+          onSelectTrack(clickedTrack);
+        }
       }
     }
   };
@@ -89,6 +110,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
             data={plotData}
             layout={{
               autosize: true,
+              hovermode: 'closest' as const,
               paper_bgcolor: 'rgba(0,0,0,0)',
               plot_bgcolor: 'rgba(0,0,0,0)',
               margin: { l: 20, r: 20, t: 20, b: 20 },
