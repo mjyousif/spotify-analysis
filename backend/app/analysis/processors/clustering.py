@@ -181,6 +181,13 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             genre_series = pd.Series(all_genres)
             top_genres = genre_series.value_counts().head(5).index.tolist() if not genre_series.empty else []
             
+            # Deterministically sample up to 30 tracks to ensure cache consistency
+            if len(cluster_tracks) <= 30:
+                sampled_tracks = cluster_tracks
+            else:
+                indices = np.linspace(0, len(cluster_tracks) - 1, 30, dtype=int)
+                sampled_tracks = [cluster_tracks[i] for i in indices]
+            
             cluster_profiles.append({
                 "cluster_id": cluster_idx,
                 "count": len(cluster_tracks),
@@ -192,7 +199,7 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                     "danceability": float(avg_dance)
                 },
                 "top_genres": top_genres,
-                "representative_songs": [f"{t['name']} by {t['artists']}" for t in cluster_tracks[:4]]
+                "representative_songs": [f"{t['name']} by {t['artists']}" for t in sampled_tracks]
             })
             
         # Save profiles in context for subsequent processors (like LLM)
