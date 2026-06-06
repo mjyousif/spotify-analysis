@@ -9,6 +9,8 @@ interface RecommendationsWidgetProps {
   recommendations: Recommendation[];
   onExportSuccess: (created: Array<{ playlist_id: string; name: string; track_count: number }>) => void;
   llm_active?: boolean;
+  llm_provider?: string;
+  llm_model?: string;
 }
 
 export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
@@ -16,9 +18,12 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   clusters,
   recommendations,
   onExportSuccess,
-  llm_active = true
+  llm_active = true,
+  llm_provider,
+  llm_model
 }) => {
   const [activeTab, setActiveTab] = useState<number>(0);
+  const [guideTab, setGuideTab] = useState<'cloud' | 'lmstudio' | 'ollama'>('cloud');
   const [exporting, setExporting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -115,7 +120,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
       {/* Glow Effect */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-violet-650/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
         <div>
           <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-violet-400 fill-violet-400/20" />
@@ -123,17 +128,99 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
           </h3>
           <p className="text-xs text-gray-500">Edit titles and export each vibe group as a separate Spotify playlist.</p>
         </div>
+        {llm_active && llm_provider && llm_provider !== 'none' && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] text-violet-300 font-bold self-start sm:self-center capitalize">
+            <Sparkles className="w-3 h-3 text-violet-400" />
+            <span>Active: {llm_provider.replace('_', ' ')} ({llm_model && llm_model.includes('/') ? llm_model.split('/')[1] : llm_model || 'default'})</span>
+          </div>
+        )}
       </div>
 
-      {/* LiteLLM/Gemini API Key warning notice */}
+      {/* LiteLLM Setup & Integration Guide */}
       {!llm_active && (
-        <div className="mb-4 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start space-x-2.5 text-amber-400 animate-fadeIn">
-          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <div className="text-xs">
-            <p className="font-bold">AI Vibe Summaries Disabled</p>
-            <p className="text-[10px] text-amber-500/85 mt-0.5 leading-relaxed font-medium">
-              No valid Gemini or OpenAI API key was found in the backend configuration. The application is falling back to rule-based acoustic descriptors. Setup an LLM API key in the backend environment to enable creative vibe analysis.
-            </p>
+        <div className="mb-4 bg-gray-950/40 border border-gray-850 rounded-2xl p-4 flex flex-col space-y-3 animate-fadeIn">
+          <div className="flex items-start space-x-2.5 text-amber-400">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <div className="text-xs flex-1">
+              <p className="font-bold text-gray-200">AI Vibe Summaries Disabled</p>
+              <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed font-medium">
+                No active LLM provider is configured. The application is using rule-based descriptors. Follow one of the tabs below to enable creative vibe analysis.
+              </p>
+            </div>
+          </div>
+          
+          {/* Guide Tabs */}
+          <div className="flex border-b border-gray-900 pb-px gap-1">
+            {(['cloud', 'lmstudio', 'ollama'] as const).map((tab) => {
+              const isActive = guideTab === tab;
+              const labels = {
+                cloud: 'Cloud APIs',
+                lmstudio: 'LM Studio (Local)',
+                ollama: 'Ollama (Local)'
+              };
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setGuideTab(tab)}
+                  className={`px-3 py-1.5 border-b-2 text-[10px] font-bold transition-all cursor-pointer ${
+                    isActive 
+                      ? 'border-violet-500 text-violet-400 bg-violet-500/5' 
+                      : 'border-transparent text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Guide Tab Content */}
+          <div className="text-[10px] text-gray-400 leading-normal font-medium space-y-2 pt-1">
+            {guideTab === 'cloud' && (
+              <div className="space-y-1">
+                <p>To use cloud models (Gemini, OpenAI, Anthropic):</p>
+                <ol className="list-decimal list-inside space-y-0.5 pl-1 text-[9px] text-gray-500">
+                  <li>Open <code className="bg-gray-950 px-1 py-0.5 rounded text-gray-400">backend/.env</code> in your editor.</li>
+                  <li>Provide your API key: e.g. <code className="bg-gray-950 px-1 py-0.5 rounded text-gray-400">GEMINI_API_KEY=AIzaSy...</code></li>
+                  <li>Restart the backend server. The app automatically detects keys.</li>
+                </ol>
+              </div>
+            )}
+            {guideTab === 'lmstudio' && (
+              <div className="space-y-1">
+                <p>To run local models using LM Studio:</p>
+                <ol className="list-decimal list-inside space-y-0.5 pl-1 text-[9px] text-gray-500">
+                  <li>Download and launch <a href="https://lmstudio.ai" target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">LM Studio</a>.</li>
+                  <li>Download a model (e.g. Qwen 2.5 7B, Llama 3.2 3B) and load it.</li>
+                  <li>Enable the **Local Server** option in LM Studio (typically port <code className="text-gray-450">1234</code>).</li>
+                  <li>Update your <code className="bg-gray-950 px-1 py-0.5 rounded text-gray-400">backend/.env</code>:
+                    <pre className="bg-gray-950 p-1.5 rounded text-[8px] text-gray-400 mt-1 block font-mono">
+                      LLM_PROVIDER=lm_studio{"\n"}
+                      LLM_MODEL=your-loaded-model-id  # Optional
+                    </pre>
+                  </li>
+                  <li>Restart the backend server. No API keys are required.</li>
+                </ol>
+              </div>
+            )}
+            {guideTab === 'ollama' && (
+              <div className="space-y-1">
+                <p>To run local models using Ollama:</p>
+                <ol className="list-decimal list-inside space-y-0.5 pl-1 text-[9px] text-gray-500">
+                  <li>Download and install <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Ollama</a>.</li>
+                  <li>Pull and run a model from your terminal: <code className="bg-gray-950 px-1.5 py-0.5 rounded text-gray-400 block mt-1 w-fit font-mono">ollama run llama3.2</code></li>
+                  <li>Verify Ollama is running (typically port <code className="text-gray-450">11434</code>).</li>
+                  <li>Update your <code className="bg-gray-950 px-1 py-0.5 rounded text-gray-400">backend/.env</code>:
+                    <pre className="bg-gray-950 p-1.5 rounded text-[8px] text-gray-400 mt-1 block font-mono">
+                      LLM_PROVIDER=ollama{"\n"}
+                      LLM_MODEL=llama3.2  # Matches pulled model
+                    </pre>
+                  </li>
+                  <li>Restart the backend server. No API keys are required.</li>
+                </ol>
+              </div>
+            )}
           </div>
         </div>
       )}

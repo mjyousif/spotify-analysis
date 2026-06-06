@@ -14,3 +14,14 @@ model_list:
       model: gemini/gemini-1.5-flash
       api_key: "os.environ/GEMINI_API_KEY"
       temperature: 0.4
+  - model_name: lm-studio-model
+    litellm_params:
+      model: lm_studio/local-model
+      api_base: "os.environ/LM_STUDIO_API_BASE"
+      api_key: "lm-studio"
+      temperature: 0.4
+  - model_name: ollama-model
+    litellm_params:
+      model: ollama/llama3
+      api_base: "os.environ/OLLAMA_API_BASE"
+      temperature: 0.4

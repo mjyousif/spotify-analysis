@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     
+    # Selected LLM provider: "openai", "gemini", "anthropic", "lm_studio", "ollama"
+    llm_provider: str = ""
+    # Optional model name override
+    llm_model: str = ""
+    # Base URLs for local LLMs
+    lm_studio_api_base: str = "http://localhost:1234/v1"
+    ollama_api_base: str = "http://localhost:11434"
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -20,3 +28,4 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+

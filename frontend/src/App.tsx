@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { spotifyAuth } from './services/spotifyAuth';
 import { apiService } from './services/api';
 import type { PlaylistInfo, TrackData, AnalysisResponse } from './services/api';
@@ -10,7 +10,7 @@ import { FeatureAveragesWidget } from './components/Dashboard/FeatureAveragesWid
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { 
   Music, Sparkles, Layers, Shuffle, ArrowLeft, 
-  CheckCircle2, Sliders, ExternalLink, Play, Pause, AlertCircle,
+  CheckCircle2, Sliders, ExternalLink, AlertCircle,
   Info
 } from 'lucide-react';
 
@@ -30,12 +30,16 @@ function App() {
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [llmConfig, setLlmConfig] = useState<{ llm_active: boolean; llm_provider: string; llm_model: string } | null>(null);
 
-  // Selection & Player States
+  // Selection State
   const [selectedTrack, setSelectedTrack] = useState<TrackData | null>(null);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [loadSpotifyEmbed, setLoadSpotifyEmbed] = useState<boolean>(false);
+
+  // Reset Spotify embed loader on track change to prevent focus stealing on click
+  useEffect(() => {
+    setLoadSpotifyEmbed(false);
+  }, [selectedTrack]);
 
   // Success Export State
   const [exportedPlaylists, setExportedPlaylists] = useState<
@@ -86,6 +90,19 @@ function App() {
     }
   }, [isLoggedIn]);
 
+  // Fetch LLM configuration status on login status change
+  useEffect(() => {
+    if (isLoggedIn) {
+      apiService.getLlmConfig()
+        .then(data => {
+          setLlmConfig(data);
+        })
+        .catch(err => {
+          console.error("Error fetching LLM config:", err);
+        });
+    }
+  }, [isLoggedIn]);
+
   // 3. Run Vibe Analysis on a Playlist
   const handleRunAnalysis = (playlistId: string, customK?: number) => {
     setSelectedPlaylistId(playlistId);
@@ -93,7 +110,6 @@ function App() {
     setAnalysisError(null);
     setExportedPlaylists(null);
     setSelectedTrack(null);
-    setIsPlaying(false);
 
     apiService.analyzePlaylist(playlistId, customK)
       .then(data => {
@@ -117,37 +133,7 @@ function App() {
   // 4. Handle Preview Audio Controls
   const handleSelectTrack = (track: TrackData) => {
     setSelectedTrack(track);
-    setIsPlaying(false);
-    
-    // Spotify track metadata has preview_url, but ReccoBeats or Spotify mock endpoint might not return it.
-    // We can simulate playing a generic track if missing, or use a placeholder.
-    // In our Spotify API service, we query track objects. Standard Spotify API has a `preview_url` field.
-    // If it exists, we play it. Let's write standard preview audio player code:
-    const mockPreview = `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${(track.name.length % 8) + 1}.mp3`;
-    setPreviewUrl(mockPreview);
   };
-
-  const togglePlayback = () => {
-    if (!audioRef.current || !previewUrl) return;
-
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.src = previewUrl;
-      audioRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(e => console.error("Audio playback error: ", e));
-    }
-  };
-
-  // Reset audio on track change
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    }
-  }, [selectedTrack]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -265,6 +251,34 @@ function App() {
   if (!selectedPlaylistId) {
     return (
       <Layout onLogout={() => setIsLoggedIn(false)}>
+        {llmConfig && (
+          <div className="mb-6 flex items-center justify-between p-4 bg-gray-900/20 border border-gray-850 rounded-2xl animate-fadeIn">
+            <div className="flex items-center space-x-3">
+              <div className={`p-2.5 rounded-xl ${llmConfig.llm_active ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="text-left">
+                <h4 className="text-xs font-bold text-white">
+                  {llmConfig.llm_active ? 'AI Vibe Engine Active' : 'AI Vibe Engine Standby'}
+                </h4>
+                <p className="text-[10px] text-gray-500 mt-0.5 font-medium leading-relaxed text-left">
+                  {llmConfig.llm_active 
+                    ? `Powered by ${llmConfig.llm_provider.replace('_', ' ')} (${llmConfig.llm_model && llmConfig.llm_model.includes('/') ? llmConfig.llm_model.split('/')[1] : llmConfig.llm_model || 'default'})`
+                    : 'Setup local LLM (LM Studio / Ollama) or cloud API keys to enable automatic, creative playlist descriptors.'}
+                </p>
+              </div>
+            </div>
+            {llmConfig.llm_active ? (
+              <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider hidden sm:inline-block">
+                Online
+              </span>
+            ) : (
+              <span className="text-[10px] bg-amber-500/10 border border-amber-500/25 text-amber-400 font-bold px-2.5 py-1 rounded-full uppercase tracking-wider hidden sm:inline-block">
+                Offline Mode
+              </span>
+            )}
+          </div>
+        )}
         <PlaylistGrid
           playlists={playlists}
           onSelectPlaylist={handleRunAnalysis}
@@ -280,8 +294,6 @@ function App() {
 
   return (
     <Layout onLogout={() => setIsLoggedIn(false)}>
-      <audio ref={audioRef} onEnded={() => setIsPlaying(false)} />
-
       {/* Workbench Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div className="flex items-center space-x-4">
@@ -389,36 +401,65 @@ function App() {
                   recommendations={analysisData.recommendations}
                   onExportSuccess={setExportedPlaylists}
                   llm_active={analysisData.llm_active}
+                  llm_provider={analysisData.llm_provider}
+                  llm_model={analysisData.llm_model}
                 />
               </ErrorBoundary>
             </div>
-          </div>
-
-          {/* Player details sidebar (if track is selected, we can also play preview audio) */}
+          </div>          {/* Player details sidebar (with Spotify Embed player) */}
           {selectedTrack && (
-            <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={togglePlayback}
-                  className="bg-violet-600 hover:bg-violet-500 text-white p-4 rounded-full shadow-lg shadow-violet-500/10 hover:shadow-violet-500/25 transition-all cursor-pointer flex-shrink-0"
-                >
-                  {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-                </button>
-                <div>
-                  <h4 className="font-bold text-white text-base">{selectedTrack.name}</h4>
-                  <p className="text-xs text-gray-400 mt-0.5">by {selectedTrack.artists}</p>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl p-5 flex flex-col lg:flex-row items-stretch justify-between gap-6">
+              {/* Spotify Embed Player & Genre Tags */}
+              <div className="flex flex-col justify-between gap-3 w-full lg:max-w-md">
+                {loadSpotifyEmbed ? (
+                  <iframe
+                    src={`https://open.spotify.com/embed/track/${selectedTrack.id}?utm_source=generator&theme=0`}
+                    width="100%"
+                    height="80"
+                    frameBorder="0"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"
+                    className="rounded-xl border-0 bg-transparent"
+                  />
+                ) : (
+                  <div className="flex items-center space-x-4 h-[80px]">
+                    <div className="w-16 h-16 bg-gray-800 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center border border-gray-850">
+                      {selectedTrack.album_images && selectedTrack.album_images.length > 0 ? (
+                        <img
+                          src={selectedTrack.album_images[selectedTrack.album_images.length - 1].url}
+                          alt={selectedTrack.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Music className="w-5 h-5 text-gray-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-white text-sm truncate">{selectedTrack.name}</h4>
+                      <p className="text-xs text-gray-400 truncate">by {selectedTrack.artists}</p>
+                    </div>
+                    <button
+                      onClick={() => setLoadSpotifyEmbed(true)}
+                      className="bg-violet-650 hover:bg-violet-550 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-violet-550/10 hover:shadow-violet-550/25 transition-all cursor-pointer flex items-center space-x-1.5 flex-shrink-0"
+                    >
+                      <Music className="w-3.5 h-3.5" />
+                      <span>Play Preview</span>
+                    </button>
+                  </div>
+                )}
+                {selectedTrack.genres.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
                     {selectedTrack.genres.map((g, idx) => (
                       <span key={idx} className="bg-gray-950 text-gray-500 px-2 py-0.5 rounded text-[9px] font-bold uppercase">
                         {g}
                       </span>
                     ))}
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Simple Feature Radar/Progress bars for this track */}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 bg-gray-950/20 border border-gray-850/60 p-3 rounded-xl flex-1 max-w-xl">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 bg-gray-950/20 border border-gray-850/60 p-4 rounded-xl flex-1 items-center max-w-xl">
                 {Object.entries(selectedTrack.features).map(([key, val]) => {
                   const label = key.toUpperCase();
                   const pct = key === 'tempo' ? (val / 200) * 100 : val * 100;

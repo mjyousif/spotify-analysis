@@ -48,9 +48,9 @@ spotify-analysis/
 2. **ReccoBeats API Key (Optional)**:
    - Go to [ReccoBeats](https://reccobeats.com) to register an API key for retrieving track acoustics.
    - *Note: If no key is set or the API is unavailable, the application gracefully degrades to generating realistic mock-features so you can still test it out.*
-3. **LLM API Key (Optional)**:
-   - Provide an `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for LLM playlist naming.
-   - *Note: If no key is set, the engine falls back to a high-quality rules-based categorization engine.*
+3. **LLM Provider / Local LLM (Optional)**:
+   - Configure a cloud provider (e.g. Gemini, OpenAI, Anthropic) or connect a local LLM running via **LM Studio** or **Ollama**.
+   - *Note: If no LLM provider is active, the engine falls back to a high-quality rules-based categorization engine.*
 
 ---
 
@@ -70,8 +70,15 @@ spotify-analysis/
 
    # Optional API keys:
    RECCOBEATS_API_KEY=your_reccobeats_api_key_here
-   OPENAI_API_KEY=your_openai_api_key_here
+
+   # LLM selection: gemini, openai, anthropic, lm_studio, or ollama
+   LLM_PROVIDER=lm_studio
+   LLM_MODEL=your-local-model-id  # Optional model override
+
+   # API Keys (required for cloud providers):
    GEMINI_API_KEY=your_gemini_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
    ```
 
 ### 2. Run the Backend (FastAPI)

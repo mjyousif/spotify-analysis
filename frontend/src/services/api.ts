@@ -67,7 +67,16 @@ export interface AnalysisResponse {
   clusters: ClusterProfile[];
   recommendations: Recommendation[];
   llm_active?: boolean;
+  llm_provider?: string;
+  llm_model?: string;
   recommended_k?: number;
+}
+
+export interface LlmConfigResponse {
+  llm_active: boolean;
+  llm_provider: string;
+  llm_model: string;
+  api_base?: string;
 }
 
 export interface PlaylistInfo {
@@ -83,6 +92,11 @@ export const apiService = {
   async getPlaylists(): Promise<PlaylistInfo[]> {
     const response = await api.get<{ playlists: PlaylistInfo[] }>('/api/playlists');
     return response.data.playlists;
+  },
+
+  async getLlmConfig(): Promise<LlmConfigResponse> {
+    const response = await api.get<LlmConfigResponse>('/api/config/llm');
+    return response.data;
   },
 
   async analyzePlaylist(playlistId: string, k?: number): Promise<AnalysisResponse> {

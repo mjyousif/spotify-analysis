@@ -17,6 +17,20 @@ except ImportError:
 
 logger = logging.getLogger("uvicorn.error")
 
+def is_valid_key(key: str) -> bool:
+    if not key:
+        return False
+    key_stripped = key.strip()
+    if key_stripped.lower() in (
+        "", "none", "null", "false", "placeholder",
+        "your_openai_api_key_here",
+        "your_gemini_api_key_here",
+        "your_anthropic_api_key_here",
+        "your_reccobeats_api_key_here"
+    ) or key_stripped.startswith("your_"):
+        return False
+    return True
+
 class LLMRecommendationProcessor(BaseAnalysisProcessor):
     """
     Summarizes each cluster's musical features and uses LiteLLM
@@ -33,32 +47,82 @@ class LLMRecommendationProcessor(BaseAnalysisProcessor):
         if not cluster_profiles:
             return {"recommendations": []}
             
-        # Check if we have active LLM keys
-        has_llm_key = any([
-            settings.openai_api_key, 
-            settings.anthropic_api_key, 
-            settings.gemini_api_key,
-            # Or if they are set in env directly
-            "OPENAI_API_KEY" in os.environ,
-            "ANTHROPIC_API_KEY" in os.environ,
-            "GEMINI_API_KEY" in os.environ
-        ])
-        
-        # Determine model to use
-        # Default model will be gpt-4o-mini, or gemini-1.5-flash, or a similar light model
-        model = "gpt-4o-mini"
-        if "GEMINI_API_KEY" in os.environ or settings.gemini_api_key:
-            model = "gemini/gemini-1.5-flash"
-        elif "ANTHROPIC_API_KEY" in os.environ or settings.anthropic_api_key:
-            model = "anthropic/claude-3-haiku-20240307"
-            
+        # Determine model, provider, api_base, and api_key to use
+        provider = settings.llm_provider.lower().strip() if settings.llm_provider else ""
+        model_override = settings.llm_model.strip() if settings.llm_model else ""
+        api_base = None
+        api_key = None
+        has_llm_key = False
+
+        if provider:
+            if provider == "lm_studio":
+                has_llm_key = True
+                api_base = settings.lm_studio_api_base
+                actual_model = f"lm_studio/{model_override}" if model_override else "lm_studio/local-model"
+                api_key = "lm-studio"
+            elif provider == "ollama":
+                has_llm_key = True
+                api_base = settings.ollama_api_base
+                actual_model = f"ollama/{model_override}" if model_override else "ollama/llama3"
+                api_key = "ollama"
+            elif provider == "gemini":
+                val = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
+                has_llm_key = is_valid_key(val)
+                api_key = val if has_llm_key else None
+                actual_model = f"gemini/{model_override}" if model_override else "gemini/gemini-1.5-flash"
+            elif provider == "openai":
+                val = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
+                has_llm_key = is_valid_key(val)
+                api_key = val if has_llm_key else None
+                actual_model = model_override if model_override else "gpt-4o-mini"
+            elif provider == "anthropic":
+                val = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+                has_llm_key = is_valid_key(val)
+                api_key = val if has_llm_key else None
+                actual_model = f"anthropic/{model_override}" if model_override else "anthropic/claude-3-haiku-20240307"
+            else:
+                actual_model = model_override
+                val = os.environ.get("OPENAI_API_KEY", "")
+                has_llm_key = is_valid_key(val) or bool(actual_model)
+                api_key = val if is_valid_key(val) else None
+        else:
+            # Auto-detect provider based on environment keys
+            gemini_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
+            openai_key = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
+            anthropic_key = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+
+            if is_valid_key(gemini_key):
+                provider = "gemini"
+                actual_model = "gemini/gemini-1.5-flash"
+                api_key = gemini_key
+                has_llm_key = True
+            elif is_valid_key(openai_key):
+                provider = "openai"
+                actual_model = "gpt-4o-mini"
+                api_key = openai_key
+                has_llm_key = True
+            elif is_valid_key(anthropic_key):
+                provider = "anthropic"
+                actual_model = "anthropic/claude-3-haiku-20240307"
+                api_key = anthropic_key
+                has_llm_key = True
+            else:
+                provider = "none"
+                actual_model = "none"
+                has_llm_key = False
+
         recommendations = []
         
         if not litellm or not has_llm_key:
             logger.info("LiteLLM not configured or API keys missing. Generating static vibe summaries.")
             for profile in cluster_profiles:
                 recommendations.append(self._generate_static_recommendation(profile))
-            return {"recommendations": recommendations, "llm_active": False}
+            return {
+                "recommendations": recommendations, 
+                "llm_active": False,
+                "llm_provider": provider or "none",
+                "llm_model": actual_model or "none"
+            }
             
         try:
             # Build the prompt
@@ -74,15 +138,20 @@ class LLMRecommendationProcessor(BaseAnalysisProcessor):
 
             # Check cache using a SHA-256 hash of the input configuration and model
             serialized_prompt = json.dumps(prompt_data, sort_keys=True)
-            hash_input = f"{model}:{serialized_prompt}"
+            hash_input = f"{actual_model}:{serialized_prompt}"
             hash_key = hashlib.sha256(hash_input.encode('utf-8')).hexdigest()
 
             cached_recs = cache.get_llm_recommendations(hash_key)
             if cached_recs is not None:
                 logger.info(f"Cache hit for LLM recommendations (hash: {hash_key})")
-                return {"recommendations": cached_recs, "llm_active": True}
+                return {
+                    "recommendations": cached_recs, 
+                    "llm_active": True,
+                    "llm_provider": provider,
+                    "llm_model": actual_model
+                }
 
-            logger.info(f"Cache miss for LLM recommendations. Sending request to LiteLLM ({model})...")
+            logger.info(f"Cache miss for LLM recommendations. Sending request to LiteLLM ({actual_model})...")
             prompt = f"""
 You are a professional music curator and playlist designer.
 I have clustered a user's Spotify playlist into vibe subgroups. Below is the data representing each cluster.
@@ -106,13 +175,29 @@ Format your response as a JSON object containing a list of recommendations, exac
 
 Ensure the output is valid JSON and nothing else. Do not wrap in markdown code blocks.
 """
-            # Call LiteLLM
-            response = litellm.completion(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                response_format={"type": "json_object"}
-            )
+            # Build completion kwargs
+            completion_kwargs = {
+                "model": actual_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.5,
+            }
+            if api_base:
+                completion_kwargs["api_base"] = api_base
+            if api_key:
+                completion_kwargs["api_key"] = api_key
+
+            try:
+                # Call LiteLLM with response_format first
+                response = litellm.completion(
+                    response_format={"type": "json_object"},
+                    **completion_kwargs
+                )
+            except Exception as format_err:
+                logger.warning(
+                    f"LiteLLM JSON format request failed, retrying without strict format: {str(format_err)}"
+                )
+                # Fallback: Retry without response_format (useful for older/custom local LLMs)
+                response = litellm.completion(**completion_kwargs)
             
             content = response.choices[0].message.content
             # Clean response if LLM accidentally wrapped it in markdown code blocks
@@ -138,13 +223,23 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
             if final_recs:
                 cache.set_llm_recommendations(hash_key, final_recs)
 
-            return {"recommendations": final_recs, "llm_active": True}
+            return {
+                "recommendations": final_recs, 
+                "llm_active": True,
+                "llm_provider": provider,
+                "llm_model": actual_model
+            }
             
         except Exception as e:
             logger.error(f"LiteLLM completion error: {str(e)}. Falling back to static vibe summaries.")
             for profile in cluster_profiles:
                 recommendations.append(self._generate_static_recommendation(profile))
-            return {"recommendations": recommendations, "llm_active": False}
+            return {
+                "recommendations": recommendations, 
+                "llm_active": False,
+                "llm_provider": provider,
+                "llm_model": actual_model
+            }
 
     def _generate_static_recommendation(self, profile: Dict[str, Any]) -> Dict[str, Any]:
         """Procedural recommendation engine in case LLM is unavailable."""
