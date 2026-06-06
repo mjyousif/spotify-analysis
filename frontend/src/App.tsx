@@ -10,7 +10,8 @@ import { FeatureAveragesWidget } from './components/Dashboard/FeatureAveragesWid
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { 
   Music, Sparkles, Layers, Shuffle, ArrowLeft, 
-  CheckCircle2, Sliders, ExternalLink, Play, Pause, AlertCircle 
+  CheckCircle2, Sliders, ExternalLink, Play, Pause, AlertCircle,
+  Info
 } from 'lucide-react';
 
 function App() {
@@ -92,7 +93,6 @@ function App() {
 
   // 3. Run Vibe Analysis on a Playlist
   const handleRunAnalysis = (playlistId: string, customK?: number) => {
-    const targetK = customK !== undefined ? customK : kValue;
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
     setAnalysisError(null);
@@ -100,9 +100,12 @@ function App() {
     setSelectedTrack(null);
     setIsPlaying(false);
 
-    apiService.analyzePlaylist(playlistId, targetK)
+    apiService.analyzePlaylist(playlistId, customK)
       .then(data => {
         setAnalysisData(data);
+        if (customK === undefined && data.recommended_k) {
+          setKValue(data.recommended_k);
+        }
         if (data.tracks.length > 0) {
           setSelectedTrack(data.tracks[0]);
         }
@@ -312,15 +315,25 @@ function App() {
               <Sliders className="w-4 h-4 text-violet-400" />
               <span>Splits:</span>
             </div>
-            <input
-              type="range"
-              min="2"
-              max="6"
-              value={kValue}
-              onChange={(e) => setKValue(parseInt(e.target.value))}
-              className="w-24 h-1.5 bg-gray-850 rounded-lg appearance-none cursor-pointer accent-violet-500"
-            />
-            <span className="text-xs font-bold text-white">{kValue} vibes</span>
+            <div className="flex items-center space-x-2 relative group">
+              <input
+                type="range"
+                min="2"
+                max="6"
+                value={kValue}
+                onChange={(e) => setKValue(parseInt(e.target.value))}
+                className="w-36 h-2 bg-transparent rounded-lg cursor-pointer"
+              />
+              {analysisData.recommended_k && (
+                <div className="relative flex items-center">
+                  <Info className="w-3.5 h-3.5 text-gray-450 hover:text-violet-400 cursor-pointer transition-colors" />
+                  <div className="absolute bottom-full mb-2.5 right-1/2 translate-x-1/2 hidden group-hover:block w-48 bg-gray-950/95 border border-gray-800 text-[10px] text-gray-300 p-2.5 rounded-xl shadow-xl z-20 text-center leading-normal backdrop-blur-sm">
+                    {analysisData.recommended_k} vibes might be a good fit but you can change it.
+                  </div>
+                </div>
+              )}
+            </div>
+            <span className="text-xs font-bold text-white min-w-[50px]">{kValue} vibes</span>
             <button
               onClick={() => handleRunAnalysis(selectedPlaylistId, kValue)}
               disabled={analysisLoading}

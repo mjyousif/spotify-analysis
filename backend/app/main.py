@@ -74,7 +74,7 @@ def list_playlists(token: str = Depends(get_spotify_token)):
 @app.get("/api/analysis/playlist/{playlist_id}")
 def analyze_playlist(
     playlist_id: str,
-    k: int = Query(3, description="Number of clusters/vibe splits to create", ge=1, le=10),
+    k: int = Query(None, description="Number of clusters/vibe splits to create", ge=1, le=10),
     token: str = Depends(get_spotify_token)
 ):
     """

@@ -67,6 +67,7 @@ export interface AnalysisResponse {
   clusters: ClusterProfile[];
   recommendations: Recommendation[];
   llm_active?: boolean;
+  recommended_k?: number;
 }
 
 export interface PlaylistInfo {
@@ -84,9 +85,9 @@ export const apiService = {
     return response.data.playlists;
   },
 
-  async analyzePlaylist(playlistId: string, k: number): Promise<AnalysisResponse> {
+  async analyzePlaylist(playlistId: string, k?: number): Promise<AnalysisResponse> {
     const response = await api.get<AnalysisResponse>(`/api/analysis/playlist/${playlistId}`, {
-      params: { k },
+      params: k !== undefined ? { k } : {},
     });
     return response.data;
   },

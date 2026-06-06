@@ -6,6 +6,43 @@ from sklearn.decomposition import PCA
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
 
+def calculate_recommended_k(X_scaled: np.ndarray) -> int:
+    num_tracks = X_scaled.shape[0]
+    if num_tracks <= 3:
+        return 2
+    
+    # We want to search between 2 and min(6, num_tracks - 1)
+    max_k = min(6, num_tracks - 1)
+    if max_k < 2:
+        return 2
+        
+    best_k = 3
+    best_score = -1.0
+    
+    # Try different values of k and evaluate using Silhouette Score
+    from sklearn.metrics import silhouette_score
+    
+    for k in range(2, max_k + 1):
+        try:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
+            labels = kmeans.fit_predict(X_scaled)
+            score = silhouette_score(X_scaled, labels)
+            if score > best_score:
+                best_score = score
+                best_k = k
+        except Exception:
+            continue
+            
+    # Cap k based on playlist size to keep vibes appropriately sized
+    if num_tracks < 12:
+        best_k = min(best_k, 2)
+    elif num_tracks < 24:
+        best_k = min(best_k, 3)
+    elif num_tracks < 40:
+        best_k = min(best_k, 4)
+        
+    return best_k
+
 class VibeClusteringProcessor(BaseAnalysisProcessor):
     """
     Normalizes audio features, runs K-Means clustering, 
@@ -22,16 +59,8 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         if tracks_df.empty or features_df.empty:
             return {"tracks": [], "clusters": []}
             
-        # 1. Determine number of clusters (k) from context, with fallback defaults
+        # 1. Extract numeric feature columns for clustering & PCA
         num_tracks = len(tracks_df)
-        k = int(context.get("k", 3))
-        # Ensure k is valid
-        if k < 1:
-            k = 1
-        if k > num_tracks:
-            k = num_tracks
-            
-        # 2. Extract numeric feature columns for clustering & PCA
         feature_cols = [
             "tempo", "energy", "valence", "acousticness", 
             "danceability", "instrumentalness", "speechiness"
@@ -44,9 +73,30 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 
         X = features_df[feature_cols].copy()
         
-        # 3. Normalize features
+        # 2. Normalize features
         scaler = MinMaxScaler()
         X_scaled = scaler.fit_transform(X)
+        
+        # 3. Determine recommended and active K
+        recommended_k = calculate_recommended_k(X_scaled)
+        
+        context_k = context.get("k")
+        if context_k is None:
+            k = recommended_k
+        else:
+            try:
+                k = int(context_k)
+            except (ValueError, TypeError):
+                k = recommended_k
+                
+        # Ensure k is valid
+        if k < 1:
+            k = 1
+        if k > num_tracks:
+            k = num_tracks
+            
+        # Update context so subsequent processors know the actual k used
+        context["k"] = k
         
         # 4. Perform K-Means Clustering
         if k > 1 and num_tracks >= k:
@@ -151,5 +201,6 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         
         return {
             "tracks": processed_tracks,
-            "clusters": cluster_profiles
+            "clusters": cluster_profiles,
+            "recommended_k": recommended_k
         }

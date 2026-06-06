@@ -16,7 +16,7 @@ class AnalysisPipeline:
     def register_processor(self, processor: BaseAnalysisProcessor) -> None:
         self.processors.append(processor)
         
-    def run(self, access_token: str, tracks: List[Dict[str, Any]], k: int) -> Dict[str, Any]:
+    def run(self, access_token: str, tracks: List[Dict[str, Any]], k: int = None) -> Dict[str, Any]:
         """
         Gathers raw data, builds DataFrames, runs all processors, 
         and packages the final payload.
