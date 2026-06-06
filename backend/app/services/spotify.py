@@ -1,7 +1,8 @@
 import time
 import logging
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from app.services.cache import cache
 
 SPOTIFY_API_URL = "https://api.spotify.com/v1"
 
@@ -81,7 +82,33 @@ def get_user_playlists(access_token: str) -> List[Dict[str, Any]]:
         
     return playlists
 
+def get_playlist_snapshot_id(access_token: str, playlist_id: str) -> Optional[str]:
+    """Fetches the current snapshot_id of a playlist from Spotify."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        response = make_spotify_request(
+            "GET", 
+            f"{SPOTIFY_API_URL}/playlists/{playlist_id}?fields=snapshot_id", 
+            headers=headers
+        )
+        return response.json().get("snapshot_id")
+    except Exception as e:
+        logger.error(f"Failed to fetch snapshot ID for playlist {playlist_id}: {str(e)}")
+        return None
+
 def get_playlist_tracks(access_token: str, playlist_id: str) -> List[Dict[str, Any]]:
+    # Try fetching the current snapshot ID from Spotify
+    snapshot_id = get_playlist_snapshot_id(access_token, playlist_id)
+    
+    # If snapshot_id was successfully retrieved, check cache
+    if snapshot_id:
+        cached_tracks = cache.get_playlist_tracks(playlist_id, snapshot_id)
+        if cached_tracks is not None:
+            logger.info(f"Cache hit for playlist {playlist_id} tracks (snapshot: {snapshot_id})")
+            return cached_tracks
+            
+    # Cache miss (or we couldn't get snapshot_id): fetch from API
+    logger.info(f"Cache miss for playlist {playlist_id} tracks. Fetching from Spotify API...")
     headers = {"Authorization": f"Bearer {access_token}"}
     tracks = []
     url = f"{SPOTIFY_API_URL}/playlists/{playlist_id}/items?limit=100&fields=items(track(id,name,uri,duration_ms,album(images),artists(id,name))),next"
@@ -95,29 +122,52 @@ def get_playlist_tracks(access_token: str, playlist_id: str) -> List[Dict[str, A
                 tracks.append(item["track"])
         url = data.get("next")
         
+    # Store in cache if we have a snapshot ID
+    if snapshot_id and tracks:
+        cache.set_playlist_tracks(playlist_id, snapshot_id, tracks)
+        
     return tracks
 
 def get_artists_genres(access_token: str, artist_ids: List[str]) -> Dict[str, List[str]]:
-    """Fetches artist profiles in batches of 50 to extract their genres."""
+    """Fetches artist profiles in batches of 50 to extract their genres (checking local cache first)."""
     if not artist_ids:
         return {}
         
+    # 1. Check cache first
+    artist_genres = cache.get_artist_genres(artist_ids)
+    
+    # 2. Identify missing artist IDs
+    missing_ids = [aid for aid in artist_ids if aid not in artist_genres]
+    
+    if not missing_ids:
+        logger.info(f"All {len(artist_ids)} artist genres retrieved from cache.")
+        return artist_genres
+        
+    logger.info(f"Cache hit for {len(artist_genres)} artists. Fetching remaining {len(missing_ids)} from Spotify API...")
+    
     headers = {"Authorization": f"Bearer {access_token}"}
-    artist_genres = {}
+    new_genres = {}
     
     # Spotify limit is 50 artist IDs per request
     batch_size = 50
-    for i in range(0, len(artist_ids), batch_size):
-        batch = artist_ids[i:i + batch_size]
+    for i in range(0, len(missing_ids), batch_size):
+        batch = missing_ids[i:i + batch_size]
         ids_str = ",".join(batch)
         response = make_spotify_request("GET", f"{SPOTIFY_API_URL}/artists?ids={ids_str}", headers=headers)
         data = response.json()
         
         for artist in data.get("artists", []):
             if artist:
-                artist_genres[artist["id"]] = artist.get("genres", [])
+                new_genres[artist["id"]] = artist.get("genres", [])
                 
+    # 3. Store newly fetched artist genres in cache
+    if new_genres:
+        cache.set_artist_genres(new_genres)
+        
+    # 4. Merge results
+    artist_genres.update(new_genres)
     return artist_genres
+
 
 def create_playlist(access_token: str, user_id: str, name: str, description: str) -> str:
     headers = {

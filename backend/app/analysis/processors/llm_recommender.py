@@ -6,6 +6,8 @@ import pandas as pd
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
 from app.config import settings
+from app.services.cache import cache
+import hashlib
 
 # Try to import litellm, catch import errors gracefully
 try:
@@ -69,7 +71,18 @@ class LLMRecommendationProcessor(BaseAnalysisProcessor):
                     "representative_songs": profile["representative_songs"],
                     "averages": profile["averages"]
                 })
-                
+
+            # Check cache using a SHA-256 hash of the input configuration and model
+            serialized_prompt = json.dumps(prompt_data, sort_keys=True)
+            hash_input = f"{model}:{serialized_prompt}"
+            hash_key = hashlib.sha256(hash_input.encode('utf-8')).hexdigest()
+
+            cached_recs = cache.get_llm_recommendations(hash_key)
+            if cached_recs is not None:
+                logger.info(f"Cache hit for LLM recommendations (hash: {hash_key})")
+                return {"recommendations": cached_recs, "llm_active": True}
+
+            logger.info(f"Cache miss for LLM recommendations. Sending request to LiteLLM ({model})...")
             prompt = f"""
 You are a professional music curator and playlist designer.
 I have clustered a user's Spotify playlist into vibe subgroups. Below is the data representing each cluster.
@@ -120,6 +133,11 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
                     final_recs.append(rec_map[cid])
                 else:
                     final_recs.append(self._generate_static_recommendation(profile))
+            
+            # Save finalized recommendations to cache
+            if final_recs:
+                cache.set_llm_recommendations(hash_key, final_recs)
+
             return {"recommendations": final_recs, "llm_active": True}
             
         except Exception as e:
