@@ -26,10 +26,12 @@ export interface TrackData {
   name: string;
   uri: string;
   artists: string;
-  album_images: Array<{ url: string; height: number; width: number }>;
+  album_images: Array<{ url: string; height?: number; width?: number }>;
   cluster: number;
   x: number;
   y: number;
+  popularity: number;
+  release_date: string;
   features: {
     tempo: number;
     energy: number;
@@ -37,6 +39,10 @@ export interface TrackData {
     acousticness: number;
     danceability: number;
     instrumentalness: number;
+    speechiness: number;
+    liveness: number;
+    mode: number;
+    key: number;
   };
   genres: string[];
 }
@@ -124,10 +130,11 @@ export const apiService = {
     return response.data;
   },
 
-  async analyzePlaylist(playlistId: string, k?: number): Promise<AnalysisResponse> {
-    const response = await api.get<AnalysisResponse>(`/api/analysis/playlist/${playlistId}`, {
-      params: k !== undefined ? { k } : {},
-    });
+  async analyzePlaylist(playlistId: string, k?: number, algorithm?: string): Promise<AnalysisResponse> {
+    const params: Record<string, any> = {};
+    if (k !== undefined) params.k = k;
+    if (algorithm !== undefined) params.algorithm = algorithm;
+    const response = await api.get<AnalysisResponse>(`/api/analysis/playlist/${playlistId}`, { params });
     return response.data;
   },
 

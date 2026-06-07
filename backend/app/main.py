@@ -268,6 +268,7 @@ def list_playlists(token: str = Depends(get_spotify_token)):
 def analyze_playlist(
     playlist_id: str,
     k: int = Query(None, description="Number of clusters/vibe splits to create", ge=1, le=10),
+    algorithm: str = Query("kmeans", description="Clustering algorithm to use"),
     token: str = Depends(get_spotify_token)
 ):
     """
@@ -287,7 +288,7 @@ def analyze_playlist(
             
         # 2. Run analysis pipeline
         pipeline = create_default_pipeline()
-        result = pipeline.run(token, tracks, k)
+        result = pipeline.run(token, tracks, k, algorithm)
         return result
         
     except SpotifyAPIError as e:

@@ -157,6 +157,8 @@ You are a professional music curator and playlist designer.
 I have clustered a user's Spotify playlist into vibe subgroups. Below is the data representing each cluster.
 Analyze each cluster and generate a creative playlist name (avoiding generic names like 'Chill Vibes' or 'Upbeat Mix'), a short Spotify-ready description (1-2 sentences), and a detailed explanation of the 'vibe' (what mood it is, why these songs go together).
 
+Note: If a cluster has a cluster_id of -1, it represents "Wildcard" or "Outlier" songs that did not fit cleanly into the other core vibes. Give it a creative name representing its diverse or misfit nature (e.g., 'The Eclectic Wildcards', 'Sonic Misfits', or 'Curious Oddities') and write a description explaining that it contains the unique exceptions of the playlist.
+
 Cluster Data:
 {json.dumps(prompt_data, indent=2)}
 
@@ -244,6 +246,15 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
     def _generate_static_recommendation(self, profile: Dict[str, Any]) -> Dict[str, Any]:
         """Procedural recommendation engine in case LLM is unavailable."""
         cid = profile["cluster_id"]
+        
+        if cid == -1:
+            return {
+                "cluster_id": -1,
+                "playlist_name": "The Eclectic Wildcards",
+                "description": "A curated collection of unique tracks that stand out from the playlist's main vibes.",
+                "vibe_explanation": "These songs represent the outliers and unique soundscapes in your playlist. Because they didn't cluster cleanly into the main vibes, they form a delightful, diverse wildcard mix."
+            }
+            
         genres = profile["top_genres"]
         averages = profile["averages"]
         

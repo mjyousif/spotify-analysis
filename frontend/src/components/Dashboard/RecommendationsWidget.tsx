@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiService } from '../../services/api';
 import type { TrackData, ClusterProfile, Recommendation } from '../../services/api';
-import { Music, Check, ArrowRight, Loader2, Sparkles, Edit2, AlertCircle } from 'lucide-react';
+import { Music, Check, ArrowRight, Loader2, Sparkles, Edit2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface RecommendationsWidgetProps {
   tracks: TrackData[];
@@ -26,6 +26,70 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   const [guideTab, setGuideTab] = useState<'cloud' | 'lmstudio' | 'ollama'>('cloud');
   const [exporting, setExporting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Tabs scroll references and states
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState<boolean>(false);
+  const [showRightArrow, setShowRightArrow] = useState<boolean>(false);
+
+  // Dynamic scroll checker
+  const checkScroll = () => {
+    if (tabsRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current;
+      setShowLeftArrow(scrollLeft > 1);
+      // Tolerance of 1px for subpixel rendering issues
+      setShowRightArrow(scrollLeft + clientWidth < scrollWidth - 1);
+    }
+  };
+
+  useEffect(() => {
+    const tabsEl = tabsRef.current;
+    if (tabsEl) {
+      checkScroll();
+      tabsEl.addEventListener('scroll', checkScroll, { passive: true });
+      window.addEventListener('resize', checkScroll);
+
+      // Observe size changes to adapt dynamic arrows when items load or resize
+      const observer = new ResizeObserver(() => {
+        checkScroll();
+      });
+      observer.observe(tabsEl);
+
+      return () => {
+        tabsEl.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+        observer.disconnect();
+      };
+    }
+  }, [recommendations]);
+
+  // Scroll active tab into view when selected
+  useEffect(() => {
+    if (tabsRef.current) {
+      const activeEl = tabsRef.current.querySelector('[data-active="true"]');
+      if (activeEl) {
+        activeEl.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest'
+        });
+      }
+    }
+    // Recheck scroll after a delay to allow scrollIntoView to complete
+    const timer = setTimeout(checkScroll, 300);
+    return () => clearTimeout(timer);
+  }, [activeTab]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsRef.current) {
+      const { clientWidth } = tabsRef.current;
+      const scrollAmount = clientWidth * 0.6;
+      tabsRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
   
   // Local state for editable playlist details
   const [editableDetails, setEditableDetails] = useState<
@@ -65,8 +129,10 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
       const splitsPayload = clusters.map(cluster => {
         const clusterId = cluster.cluster_id;
         const details = editableDetails[clusterId] || {
-          name: `Vibe Split ${clusterId + 1}`,
-          description: `Automatically split playlist.`
+          name: clusterId === -1 ? 'The Eclectic Wildcards' : `Vibe Split ${clusterId + 1}`,
+          description: clusterId === -1
+            ? "A collection of unique tracks that stand out from the playlist's main vibes."
+            : `Automatically split playlist.`
         };
         const clusterTrackUris = tracks
           .filter(t => t.cluster === clusterId)
@@ -226,27 +292,58 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
       )}
 
       {/* Tabs list */}
-      <div className="flex border-b border-gray-800/60 overflow-x-auto pb-px gap-2 mb-4 scrollbar-none">
-        {recommendations.map((rec, idx) => {
-          const isActive = activeTab === rec.cluster_id;
-          const details = editableDetails[rec.cluster_id] || { name: rec.playlist_name };
-          const activeBorder = colors[idx % colors.length];
-          const activeBg = bgColors[idx % bgColors.length];
-          
-          return (
+      <div className="relative mb-4 group/tabs">
+        {showLeftArrow && (
+          <div className="absolute left-0 top-0 bottom-0 flex items-center pr-8 bg-gradient-to-r from-gray-900/95 via-gray-900/60 to-transparent z-10 pointer-events-none animate-fadeIn">
             <button
-              key={rec.cluster_id}
-              onClick={() => setActiveTab(rec.cluster_id)}
-              className={`px-4 py-2 border-b-2 font-medium text-xs rounded-t-lg transition-all duration-300 whitespace-nowrap ${
-                isActive 
-                  ? `${activeBorder} ${activeBg} font-bold` 
-                  : 'border-transparent text-gray-400 hover:text-gray-250 hover:bg-gray-950/20'
-              }`}
+              type="button"
+              onClick={() => scrollTabs('left')}
+              className="p-1.5 rounded-lg bg-gray-950 border border-gray-850 hover:border-gray-700 text-gray-400 hover:text-white transition-all shadow-md pointer-events-auto cursor-pointer flex items-center justify-center"
             >
-              {details.name || `Vibe ${rec.cluster_id + 1}`}
+              <ChevronLeft className="w-4 h-4" />
             </button>
-          );
-        })}
+          </div>
+        )}
+
+        {showRightArrow && (
+          <div className="absolute right-0 top-0 bottom-0 flex items-center pl-8 bg-gradient-to-l from-gray-900/95 via-gray-900/60 to-transparent z-10 pointer-events-none animate-fadeIn">
+            <button
+              type="button"
+              onClick={() => scrollTabs('right')}
+              className="p-1.5 rounded-lg bg-gray-950 border border-gray-850 hover:border-gray-700 text-gray-400 hover:text-white transition-all shadow-md pointer-events-auto cursor-pointer flex items-center justify-center"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <div
+          ref={tabsRef}
+          className="flex border-b border-gray-800/60 overflow-x-auto pb-px gap-2 scrollbar-none"
+        >
+          {recommendations.map((rec, idx) => {
+            const isActive = activeTab === rec.cluster_id;
+            const details = editableDetails[rec.cluster_id] || { name: rec.playlist_name };
+            const isOutlier = rec.cluster_id === -1;
+            const activeBorder = isOutlier ? 'border-gray-500 text-gray-400' : colors[idx % colors.length];
+            const activeBg = isOutlier ? 'bg-gray-500/10 text-gray-400' : bgColors[idx % bgColors.length];
+            
+            return (
+              <button
+                key={rec.cluster_id}
+                data-active={isActive ? "true" : "false"}
+                onClick={() => setActiveTab(rec.cluster_id)}
+                className={`px-4 py-2 border-b-2 font-medium text-xs rounded-t-lg transition-all duration-300 whitespace-nowrap cursor-pointer ${
+                  isActive 
+                    ? `${activeBorder} ${activeBg} font-bold` 
+                    : 'border-transparent text-gray-400 hover:text-gray-250 hover:bg-gray-950/20'
+                }`}
+              >
+                {details.name || (isOutlier ? 'Wildcards' : `Vibe ${rec.cluster_id + 1}`)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Active Tab Vibe Editor */}
@@ -288,7 +385,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
             </div>
             
             <div className="mt-3 flex items-center justify-between text-[10px] text-gray-500 font-semibold border-t border-gray-900 pt-2">
-              <span>Cluster ID: #{activeTab}</span>
+              <span>{activeTab === -1 ? 'Special Vibe: Wildcards' : `Cluster ID: #${activeTab}`}</span>
               <span>Total Songs: {currentClusterTracks.length}</span>
             </div>
           </div>

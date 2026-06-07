@@ -1,10 +1,26 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.decomposition import PCA
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
+
+def safe_float(val: Any, default: float) -> float:
+    if val is None or pd.isna(val):
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+def safe_int(val: Any, default: int) -> int:
+    if val is None or pd.isna(val):
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 def calculate_recommended_k(X_scaled: np.ndarray) -> int:
     num_tracks = X_scaled.shape[0]
@@ -45,7 +61,7 @@ def calculate_recommended_k(X_scaled: np.ndarray) -> int:
 
 class VibeClusteringProcessor(BaseAnalysisProcessor):
     """
-    Normalizes audio features, runs K-Means clustering, 
+    Normalizes audio features, runs K-Means, Agglomerative, or DBSCAN clustering, 
     and applies PCA for 2D visualization coordinate mapping.
     """
     def process(
@@ -95,25 +111,56 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         if k > num_tracks:
             k = num_tracks
             
-        # Update context so subsequent processors know the actual k used
-        context["k"] = k
+        algorithm = context.get("algorithm", "kmeans")
         
-        # 4. Perform K-Means Clustering
-        if k > 1 and num_tracks >= k:
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
-            cluster_labels = kmeans.fit_predict(X_scaled)
+        # 4. Perform Clustering based on selected algorithm
+        if num_tracks >= 2:
+            if algorithm == "agglomerative":
+                try:
+                    agglomerative = AgglomerativeClustering(n_clusters=k, linkage="ward")
+                    cluster_labels = agglomerative.fit_predict(X_scaled)
+                except Exception:
+                    cluster_labels = np.zeros(num_tracks, dtype=int)
+            elif algorithm == "dbscan":
+                try:
+                    # Self-tuning DBSCAN
+                    eps_val = 0.4
+                    dbscan = DBSCAN(eps=eps_val, min_samples=2)
+                    cluster_labels = dbscan.fit_predict(X_scaled)
+                    
+                    # If all tracks are outliers, try a larger epsilon
+                    num_outliers = np.sum(cluster_labels == -1)
+                    if num_outliers == num_tracks:
+                        eps_val = 0.55
+                        dbscan = DBSCAN(eps=eps_val, min_samples=2)
+                        cluster_labels = dbscan.fit_predict(X_scaled)
+                except Exception:
+                    cluster_labels = np.zeros(num_tracks, dtype=int)
+            else: # kmeans
+                try:
+                    kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
+                    cluster_labels = kmeans.fit_predict(X_scaled)
+                except Exception:
+                    cluster_labels = np.zeros(num_tracks, dtype=int)
         else:
             cluster_labels = np.zeros(num_tracks, dtype=int)
             
-        # Add cluster labels to the context for downstream processors (like LLM)
+        # Update context so subsequent processors know the actual vibes count
+        unique_labels = set(cluster_labels)
+        active_vibes = unique_labels - {-1}
+        context["k"] = len(active_vibes)
         context["cluster_labels"] = cluster_labels
         
         # 5. Dimensionality Reduction (PCA) to 2D
         if num_tracks >= 2:
-            pca = PCA(n_components=2, random_state=42)
-            coords = pca.fit_transform(X_scaled)
-            x_coords = coords[:, 0].tolist()
-            y_coords = coords[:, 1].tolist()
+            try:
+                pca = PCA(n_components=2, random_state=42)
+                coords = pca.fit_transform(X_scaled)
+                x_coords = coords[:, 0].tolist()
+                y_coords = coords[:, 1].tolist()
+            except Exception:
+                x_coords = [0.0] * num_tracks
+                y_coords = [0.0] * num_tracks
         else:
             x_coords = [0.0] * num_tracks
             y_coords = [0.0] * num_tracks
@@ -138,30 +185,47 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             
             track_features = features_df.loc[track_id].to_dict() if track_id in features_df.index else {}
             
+            # Extract popularity and album release date
+            popularity = safe_int(row.get("popularity"), 50)
+            album = row.get("album")
+            release_date = "2000-01-01"
+            if isinstance(album, dict):
+                release_date = album.get("release_date") or "2000-01-01"
+            album_images = album.get("images", []) if isinstance(album, dict) else []
+            
             processed_tracks.append({
                 "id": track_id,
                 "name": row["name"],
                 "uri": row["uri"],
                 "artists": artists_str,
-                "album_images": row.get("album", {}).get("images", []),
+                "album_images": album_images,
                 "cluster": int(cluster_labels[idx]),
                 "x": float(x_coords[idx]),
                 "y": float(y_coords[idx]),
+                "popularity": popularity,
+                "release_date": release_date,
                 "features": {
-                    "tempo": float(track_features.get("tempo", 120.0)),
-                    "energy": float(track_features.get("energy", 0.5)),
-                    "valence": float(track_features.get("valence", 0.5)),
-                    "acousticness": float(track_features.get("acousticness", 0.5)),
-                    "danceability": float(track_features.get("danceability", 0.5)),
-                    "instrumentalness": float(track_features.get("instrumentalness", 0.0)),
+                    "tempo": safe_float(track_features.get("tempo"), 120.0),
+                    "energy": safe_float(track_features.get("energy"), 0.5),
+                    "valence": safe_float(track_features.get("valence"), 0.5),
+                    "acousticness": safe_float(track_features.get("acousticness"), 0.5),
+                    "danceability": safe_float(track_features.get("danceability"), 0.5),
+                    "instrumentalness": safe_float(track_features.get("instrumentalness"), 0.0),
+                    "speechiness": safe_float(track_features.get("speechiness"), 0.05),
+                    "liveness": safe_float(track_features.get("liveness"), 0.1),
+                    "mode": safe_int(track_features.get("mode"), 1),
+                    "key": safe_int(track_features.get("key"), 0),
                 },
                 "genres": track_genres
             })
             
         # 7. Aggregate Cluster Profiles
         cluster_profiles = []
-        for cluster_idx in range(k):
-            cluster_tracks = [t for t in processed_tracks if t["cluster"] == cluster_idx]
+        cluster_ids = sorted(list(unique_labels)) # Will include -1 if present
+        
+        for cluster_idx in cluster_ids:
+            cluster_idx_int = int(cluster_idx)
+            cluster_tracks = [t for t in processed_tracks if t["cluster"] == cluster_idx_int]
             if not cluster_tracks:
                 continue
                 
@@ -189,7 +253,7 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 sampled_tracks = [cluster_tracks[i] for i in indices]
             
             cluster_profiles.append({
-                "cluster_id": cluster_idx,
+                "cluster_id": cluster_idx_int,
                 "count": len(cluster_tracks),
                 "averages": {
                     "tempo": float(avg_tempo),

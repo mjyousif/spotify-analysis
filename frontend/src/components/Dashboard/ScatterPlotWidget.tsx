@@ -33,12 +33,12 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
     '#f43f5e', // Rose
   ];
 
-  // Group track coordinates by cluster
   const plotData = clusters.map((cluster, idx) => {
     const clusterTracks = tracks.filter(t => t.cluster === cluster.cluster_id);
     const rec = recommendations.find(r => r.cluster_id === cluster.cluster_id);
-    const displayName = rec ? rec.playlist_name : `Vibe ${cluster.cluster_id + 1}`;
-    const color = colors[idx % colors.length];
+    const isOutlier = cluster.cluster_id === -1;
+    const displayName = rec ? rec.playlist_name : (isOutlier ? 'Wildcards / Outliers' : `Vibe ${cluster.cluster_id + 1}`);
+    const color = isOutlier ? '#6b7280' : colors[idx % colors.length];
 
     return {
       x: clusterTracks.map(t => t.x),

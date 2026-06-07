@@ -48,7 +48,8 @@ export const FeatureAveragesWidget: React.FC<FeatureAveragesWidgetProps> = ({
               <div className="space-y-3">
                 {clusters.map((cluster, idx) => {
                   const rec = recommendations.find(r => r.cluster_id === cluster.cluster_id);
-                  const playlistName = rec ? rec.playlist_name : `Vibe ${cluster.cluster_id + 1}`;
+                  const isOutlier = cluster.cluster_id === -1;
+                  const playlistName = rec ? rec.playlist_name : (isOutlier ? 'Wildcards' : `Vibe ${cluster.cluster_id + 1}`);
                   const value = cluster.averages[metric.key as keyof typeof cluster.averages];
                   
                   // Scale width percentage (tempo is up to 200, others 0-1)
@@ -56,7 +57,7 @@ export const FeatureAveragesWidget: React.FC<FeatureAveragesWidgetProps> = ({
                     ? (value / 200) * 100 
                     : value * 100;
                     
-                  const color = colors[idx % colors.length];
+                  const color = isOutlier ? 'bg-gray-500' : colors[idx % colors.length];
 
                   return (
                     <div key={cluster.cluster_id} className="space-y-1">

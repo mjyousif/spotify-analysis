@@ -7,6 +7,9 @@ import { PlaylistGrid } from './components/PlaylistGrid';
 import { ScatterPlotWidget } from './components/Dashboard/ScatterPlotWidget';
 import { RecommendationsWidget } from './components/Dashboard/RecommendationsWidget';
 import { FeatureAveragesWidget } from './components/Dashboard/FeatureAveragesWidget';
+import { TasteProfileWidget } from './components/Dashboard/TasteProfileWidget';
+import { DJDeckWidget } from './components/Dashboard/DJDeckWidget';
+import { EraTimelineWidget } from './components/Dashboard/EraTimelineWidget';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { 
   Music, Sparkles, Layers, Shuffle, ArrowLeft, 
@@ -26,6 +29,7 @@ function App() {
   
   // Analysis States
   const [kValue, setKValue] = useState<number>(3);
+  const [algorithm, setAlgorithm] = useState<'kmeans' | 'agglomerative' | 'dbscan'>('kmeans');
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -119,14 +123,16 @@ function App() {
   }, [isLoggedIn]);
 
   // 3. Run Vibe Analysis on a Playlist
-  const handleRunAnalysis = (playlistId: string, customK?: number) => {
+  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan') => {
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
     setAnalysisError(null);
     setExportedPlaylists(null);
     setSelectedTrack(null);
 
-    apiService.analyzePlaylist(playlistId, customK)
+    const algoToUse = customAlgo !== undefined ? customAlgo : algorithm;
+
+    apiService.analyzePlaylist(playlistId, customK, algoToUse)
       .then(data => {
         setAnalysisData(data);
         if (customK === undefined && data.recommended_k) {
@@ -311,37 +317,68 @@ function App() {
 
         {/* Cluster / Split Controller */}
         {analysisData && (
-          <div className="flex items-center space-x-4 bg-gray-900/40 border border-gray-800/80 px-4 py-3 rounded-2xl backdrop-blur-md">
-            <div className="flex items-center space-x-2 text-xs text-gray-400 font-bold">
-              <Sliders className="w-4 h-4 text-violet-400" />
-              <span>Splits:</span>
+          <div className="flex flex-wrap items-center gap-4 bg-gray-900/40 border border-gray-800/80 px-4 py-3 rounded-2xl backdrop-blur-md">
+            {/* Algorithm Select */}
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-gray-400 font-bold">Algorithm:</span>
+              <select
+                value={algorithm}
+                onChange={(e) => {
+                  const val = e.target.value as 'kmeans' | 'agglomerative' | 'dbscan';
+                  setAlgorithm(val);
+                  handleRunAnalysis(selectedPlaylistId!, val === 'dbscan' ? undefined : kValue, val);
+                }}
+                className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors"
+              >
+                <option value="kmeans">K-Means (Balanced)</option>
+                <option value="agglomerative">Hierarchical (Deterministic)</option>
+                <option value="dbscan">DBSCAN (Outliers Filter)</option>
+              </select>
             </div>
-            <div className="flex items-center space-x-2 relative group">
-              <input
-                type="range"
-                min="2"
-                max="6"
-                value={kValue}
-                onChange={(e) => setKValue(parseInt(e.target.value))}
-                className="w-36 h-2 bg-transparent rounded-lg cursor-pointer"
-              />
-              {analysisData.recommended_k && (
-                <div className="relative flex items-center">
-                  <Info className="w-3.5 h-3.5 text-gray-450 hover:text-violet-400 cursor-pointer transition-colors" />
-                  <div className="absolute bottom-full mb-2.5 right-1/2 translate-x-1/2 hidden group-hover:block w-48 bg-gray-950/95 border border-gray-800 text-[10px] text-gray-300 p-2.5 rounded-xl shadow-xl z-20 text-center leading-normal backdrop-blur-sm">
-                    {analysisData.recommended_k} vibes might be a good fit but you can change it.
-                  </div>
+
+            {/* Split controls if not DBSCAN */}
+            {algorithm !== 'dbscan' && (
+              <div className="flex items-center space-x-4 border-l border-gray-800/80 pl-4">
+                <div className="flex items-center space-x-2 text-xs text-gray-400 font-bold">
+                  <Sliders className="w-4 h-4 text-violet-400" />
+                  <span>Splits:</span>
                 </div>
-              )}
-            </div>
-            <span className="text-xs font-bold text-white min-w-[50px]">{kValue} vibes</span>
-            <button
-              onClick={() => handleRunAnalysis(selectedPlaylistId, kValue)}
-              disabled={analysisLoading}
-              className="bg-violet-650 hover:bg-violet-500 disabled:bg-violet-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-            >
-              Update Map
-            </button>
+                <div className="flex items-center space-x-2 relative group">
+                  <input
+                    type="range"
+                    min="2"
+                    max="6"
+                    value={kValue}
+                    onChange={(e) => setKValue(parseInt(e.target.value))}
+                    className="w-36 h-2 bg-transparent rounded-lg cursor-pointer"
+                  />
+                  {analysisData.recommended_k && (
+                    <div className="relative flex items-center">
+                      <Info className="w-3.5 h-3.5 text-gray-450 hover:text-violet-400 cursor-pointer transition-colors" />
+                      <div className="absolute bottom-full mb-2.5 right-1/2 translate-x-1/2 hidden group-hover:block w-48 bg-gray-950/95 border border-gray-800 text-[10px] text-gray-300 p-2.5 rounded-xl shadow-xl z-20 text-center leading-normal backdrop-blur-sm">
+                        {analysisData.recommended_k} vibes might be a good fit but you can change it.
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <span className="text-xs font-bold text-white min-w-[50px]">{kValue} vibes</span>
+                <button
+                  onClick={() => handleRunAnalysis(selectedPlaylistId, kValue)}
+                  disabled={analysisLoading}
+                  className="bg-violet-650 hover:bg-violet-500 disabled:bg-violet-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  Update Map
+                </button>
+              </div>
+            )}
+            
+            {algorithm === 'dbscan' && (
+              <div className="flex items-center space-x-2 border-l border-gray-800/80 pl-4">
+                <span className="text-xs font-semibold text-gray-450 italic bg-gray-950 px-3 py-1.5 rounded-xl border border-gray-850">
+                  Vibes auto-calculated ({analysisData.clusters.filter(c => c.cluster_id !== -1).length} vibes)
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -454,24 +491,41 @@ function App() {
 
               {/* Simple Feature Radar/Progress bars for this track */}
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 bg-gray-950/20 border border-gray-850/60 p-4 rounded-xl flex-1 items-center max-w-xl">
-                {Object.entries(selectedTrack.features).map(([key, val]) => {
-                  const label = key.toUpperCase();
-                  const pct = key === 'tempo' ? (val / 200) * 100 : val * 100;
-                  const displayVal = key === 'tempo' ? `${Math.round(val)} BPM` : `${Math.round(val * 100)}%`;
+                {Object.entries(selectedTrack.features)
+                  .filter(([key]) => key !== 'key' && key !== 'mode')
+                  .map(([key, val]) => {
+                    const label = key.toUpperCase();
+                    const pct = key === 'tempo' ? (val / 200) * 100 : val * 100;
+                    const displayVal = key === 'tempo' ? `${Math.round(val)} BPM` : `${Math.round(val * 100)}%`;
 
-                  return (
-                    <div key={key} className="text-center space-y-1">
-                      <span className="text-[8px] text-gray-500 font-bold tracking-wider block">{label}</span>
-                      <span className="text-[10px] text-gray-250 font-bold block">{displayVal}</span>
-                      <div className="w-full bg-gray-900 h-1 rounded-full overflow-hidden">
-                        <div className="bg-violet-500 h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                    return (
+                      <div key={key} className="text-center space-y-1">
+                        <span className="text-[8px] text-gray-500 font-bold tracking-wider block">{label}</span>
+                        <span className="text-[10px] text-gray-250 font-bold block">{displayVal}</span>
+                        <div className="w-full bg-gray-900 h-1 rounded-full overflow-hidden">
+                          <div className="bg-violet-500 h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
           )}
+
+          {/* Advanced Analytics Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <ErrorBoundary name="Taste Profile">
+              <TasteProfileWidget tracks={analysisData.tracks} />
+            </ErrorBoundary>
+            
+            <ErrorBoundary name="DJ Deck Flow">
+              <DJDeckWidget tracks={analysisData.tracks} />
+            </ErrorBoundary>
+            
+            <ErrorBoundary name="Era Timeline">
+              <EraTimelineWidget tracks={analysisData.tracks} />
+            </ErrorBoundary>
+          </div>
 
           {/* Feature distribution/aggregate metrics comparisons */}
           <ErrorBoundary name="Feature Metrics">
