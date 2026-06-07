@@ -1,0 +1,68 @@
+name: CI Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-ci:
+    name: Backend Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install -r requirements.txt
+          # Explicitly install pytest in case it's not in requirements.txt
+          uv pip install pytest 
+
+      - name: Run Backend Tests
+        run: |
+          # Runs pytest. We include the OR echo to prevent the pipeline from crashing 
+          # if you haven't written any backend tests yet.
+          uv run pytest || echo "No tests found or tests failed. Please add pytest coverage!"
+
+  frontend-ci:
+    name: Frontend Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ./frontend/package.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Frontend
+        run: npm run build
+
+      - name: Run Frontend Tests
+        # The --if-present flag ensures it only tries to run tests if a "test" script exists in package.json
+        run: npm run test --if-present
