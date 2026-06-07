@@ -123,17 +123,23 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                     cluster_labels = np.zeros(num_tracks, dtype=int)
             elif algorithm == "dbscan":
                 try:
-                    # Self-tuning DBSCAN
-                    eps_val = 0.4
-                    dbscan = DBSCAN(eps=eps_val, min_samples=2)
+                    # Self-tuning DBSCAN with wider epsilon and min_samples=3 to prevent tiny splits
+                    eps_val = 0.45
+                    dbscan = DBSCAN(eps=eps_val, min_samples=3)
                     cluster_labels = dbscan.fit_predict(X_scaled)
                     
                     # If all tracks are outliers, try a larger epsilon
                     num_outliers = np.sum(cluster_labels == -1)
                     if num_outliers == num_tracks:
-                        eps_val = 0.55
-                        dbscan = DBSCAN(eps=eps_val, min_samples=2)
+                        eps_val = 0.6
+                        dbscan = DBSCAN(eps=eps_val, min_samples=3)
                         cluster_labels = dbscan.fit_predict(X_scaled)
+                        
+                    # Re-assign any small clusters (size < 3) to outliers (-1)
+                    unique, counts = np.unique(cluster_labels, return_counts=True)
+                    for val, count in zip(unique, counts):
+                        if val != -1 and count < 3:
+                            cluster_labels[cluster_labels == val] = -1
                 except Exception:
                     cluster_labels = np.zeros(num_tracks, dtype=int)
             else: # kmeans
