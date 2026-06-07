@@ -79,6 +79,11 @@ export interface LlmConfigResponse {
   api_base?: string;
 }
 
+export interface SpotifyConfigResponse {
+  client_id: string;
+  redirect_uri: string;
+}
+
 export interface PlaylistInfo {
   id: string;
   name: string;
@@ -96,6 +101,11 @@ export const apiService = {
 
   async getLlmConfig(): Promise<LlmConfigResponse> {
     const response = await api.get<LlmConfigResponse>('/api/config/llm');
+    return response.data;
+  },
+
+  async getSpotifyConfig(): Promise<SpotifyConfigResponse> {
+    const response = await api.get<SpotifyConfigResponse>('/api/config/spotify');
     return response.data;
   },
 

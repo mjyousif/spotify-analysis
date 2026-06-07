@@ -136,6 +136,17 @@ def get_llm_config():
     }
 
 
+@app.get("/api/config/spotify")
+def get_spotify_config():
+    """
+    Returns the public Spotify configuration.
+    """
+    return {
+        "client_id": settings.spotify_client_id or "",
+        "redirect_uri": settings.spotify_redirect_uri or ""
+    }
+
+
 @app.get("/api/playlists")
 def list_playlists(token: str = Depends(get_spotify_token)):
     """Fetches all playlists owned or followed by the authenticated user."""

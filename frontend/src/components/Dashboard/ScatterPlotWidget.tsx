@@ -92,6 +92,15 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
     }
   };
 
+  const clickHandlerRef = React.useRef(handlePlotClick);
+  React.useEffect(() => {
+    clickHandlerRef.current = handlePlotClick;
+  });
+
+  const stablePlotClick = React.useCallback((data: any) => {
+    clickHandlerRef.current(data);
+  }, []);
+
   return (
     <div className="bg-gray-900/40 border border-gray-800/80 rounded-2xl p-6 flex flex-col h-full shadow-lg backdrop-blur-md">
       <div className="flex items-center justify-between mb-4">
@@ -141,7 +150,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
             }}
             useResizeHandler={true}
             style={{ width: '100%', height: '100%', minHeight: '380px' }}
-            onClick={handlePlotClick}
+            onClick={stablePlotClick}
             config={{ displayModeBar: false, scrollZoom: true }}
           />
         )}

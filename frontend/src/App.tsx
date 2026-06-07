@@ -103,6 +103,22 @@ function App() {
     }
   }, [isLoggedIn]);
 
+  // Fetch Spotify configuration from backend on load if not logged in
+  useEffect(() => {
+    if (!isLoggedIn) {
+      apiService.getSpotifyConfig()
+        .then(data => {
+          if (data.client_id) {
+            spotifyAuth.setClientId(data.client_id);
+            setClientIdInput(data.client_id);
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching Spotify config:", err);
+        });
+    }
+  }, [isLoggedIn]);
+
   // 3. Run Vibe Analysis on a Playlist
   const handleRunAnalysis = (playlistId: string, customK?: number) => {
     setSelectedPlaylistId(playlistId);
