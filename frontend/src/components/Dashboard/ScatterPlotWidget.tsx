@@ -61,7 +61,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
     };
   });
 
-  const handlePlotClick = (data: any) => {
+  const handlePlotClick = React.useCallback((data: any) => {
     if (data.points && data.points.length > 0) {
       const point = data.points[0];
       const curveNumber = point.curveNumber;
@@ -90,16 +90,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
         }
       }
     }
-  };
-
-  const clickHandlerRef = React.useRef(handlePlotClick);
-  React.useEffect(() => {
-    clickHandlerRef.current = handlePlotClick;
-  });
-
-  const stablePlotClick = React.useCallback((data: any) => {
-    clickHandlerRef.current(data);
-  }, []);
+  }, [tracks, clusters, onSelectTrack]);
 
   return (
     <div className="bg-gray-900/40 border border-gray-800/80 rounded-2xl p-6 flex flex-col h-full shadow-lg backdrop-blur-md">
@@ -150,7 +141,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
             }}
             useResizeHandler={true}
             style={{ width: '100%', height: '100%', minHeight: '380px' }}
-            onClick={stablePlotClick}
+            onClick={handlePlotClick}
             config={{ displayModeBar: false, scrollZoom: true }}
           />
         )}
