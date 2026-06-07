@@ -1,5 +1,8 @@
 import logging
 import os
+import urllib.parse
+import requests
+import base64
 from fastapi import FastAPI, Depends, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -52,6 +55,12 @@ class SplitPlaylistRequest(BaseModel):
 
 class CreateSplitsRequest(BaseModel):
     splits: List[SplitPlaylistRequest]
+
+class TokenExchangeRequest(BaseModel):
+    code: str
+
+class TokenRefreshRequest(BaseModel):
+    refresh_token: str
 
 @app.get("/health")
 def health_check():
@@ -136,15 +145,107 @@ def get_llm_config():
     }
 
 
-@app.get("/api/config/spotify")
-def get_spotify_config():
+@app.get("/api/auth/login-url")
+def get_login_url():
     """
-    Returns the public Spotify configuration.
+    Generates the Spotify authorization URL.
     """
-    return {
-        "client_id": settings.spotify_client_id or "",
-        "redirect_uri": settings.spotify_redirect_uri or ""
+    if not settings.spotify_client_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Spotify Client ID is not configured on the backend."
+        )
+    
+    scopes = "playlist-read-private playlist-modify-private"
+    params = {
+        "client_id": settings.spotify_client_id,
+        "response_type": "code",
+        "redirect_uri": settings.spotify_redirect_uri,
+        "scope": scopes,
     }
+    url = f"https://accounts.spotify.com/authorize?{urllib.parse.urlencode(params)}"
+    return {"url": url}
+
+
+@app.post("/api/auth/token")
+def exchange_token(payload: TokenExchangeRequest):
+    """
+    Exchanges authorization code for Spotify access & refresh tokens.
+    """
+    if not settings.spotify_client_id or not settings.spotify_client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Spotify Client ID or Client Secret is not configured on the backend."
+        )
+
+    auth_str = f"{settings.spotify_client_id}:{settings.spotify_client_secret}"
+    auth_b64 = base64.b64encode(auth_str.encode()).decode()
+    
+    headers = {
+        "Authorization": f"Basic {auth_b64}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    data = {
+        "grant_type": "authorization_code",
+        "code": payload.code,
+        "redirect_uri": settings.spotify_redirect_uri
+    }
+    
+    try:
+        response = requests.post("https://accounts.spotify.com/api/token", headers=headers, data=data)
+        if not response.ok:
+            logger.error(f"Spotify token exchange failed: {response.text}")
+            raise HTTPException(
+                status_code=response.status_code, 
+                detail=f"Spotify token exchange failed: {response.text}"
+            )
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error exchanging token: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Failed to exchange token: {str(e)}")
+
+
+@app.post("/api/auth/refresh")
+def refresh_token(payload: TokenRefreshRequest):
+    """
+    Refreshes a Spotify access token using a refresh token.
+    """
+    if not settings.spotify_client_id or not settings.spotify_client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Spotify Client ID or Client Secret is not configured on the backend."
+        )
+
+    auth_str = f"{settings.spotify_client_id}:{settings.spotify_client_secret}"
+    auth_b64 = base64.b64encode(auth_str.encode()).decode()
+    
+    headers = {
+        "Authorization": f"Basic {auth_b64}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": payload.refresh_token
+    }
+    
+    try:
+        response = requests.post("https://accounts.spotify.com/api/token", headers=headers, data=data)
+        if not response.ok:
+            logger.error(f"Spotify token refresh failed: {response.text}")
+            raise HTTPException(
+                status_code=response.status_code, 
+                detail=f"Spotify token refresh failed: {response.text}"
+            )
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Failed to refresh token: {str(e)}")
 
 
 @app.get("/api/playlists")

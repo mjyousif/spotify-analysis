@@ -1,25 +1,6 @@
-// Spotify PKCE OAuth Helper Services
+// Spotify Backend-Driven OAuth Helper Services
 
-const REDIRECT_URI = import.meta.env.VITE_SPOTIFY_REDIRECT_URI || `${window.location.origin.replace("localhost", "[::1]")}/callback`;
-const SCOPES = "playlist-read-private playlist-modify-private";
-
-// Helper to generate a random string for code verifier
-function generateRandomString(length: number): string {
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const values = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(values).map((x) => possible[x % possible.length]).join('');
-}
-
-// Helper to SHA-256 hash the verifier to create the challenge
-async function generateCodeChallenge(codeVerifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(codeVerifier);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 export interface AuthSession {
   accessToken: string;
@@ -30,14 +11,6 @@ export interface AuthSession {
 let refreshPromise: Promise<string> | null = null;
 
 export const spotifyAuth = {
-  getClientId(): string {
-    return localStorage.getItem("spotify_client_id") || import.meta.env.VITE_SPOTIFY_CLIENT_ID || "";
-  },
-
-  setClientId(clientId: string) {
-    localStorage.setItem("spotify_client_id", clientId);
-  },
-
   isLoggedIn(): boolean {
     const sessionStr = localStorage.getItem("spotify_session");
     if (!sessionStr) return false;
@@ -88,22 +61,13 @@ export const spotifyAuth = {
         const session: AuthSession = JSON.parse(sessionStr);
         const refreshToken = session.refreshToken;
         if (!refreshToken) throw new Error("No refresh token available.");
-        
-        const clientId = this.getClientId();
-        if (!clientId) throw new Error("Spotify Client ID is required to refresh token.");
 
-        const payload = new URLSearchParams({
-          client_id: clientId,
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-        });
-
-        const response = await fetch('https://accounts.spotify.com/api/token', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type': 'application/json',
           },
-          body: payload,
+          body: JSON.stringify({ refresh_token: refreshToken }),
         });
 
         if (!response.ok) {
@@ -129,54 +93,26 @@ export const spotifyAuth = {
     return refreshPromise;
   },
 
-  async login(customClientId?: string) {
-    const clientId = customClientId || this.getClientId();
-    if (!clientId) {
-      throw new Error("Spotify Client ID is required to log in.");
+  async login() {
+    const response = await fetch(`${API_BASE_URL}/api/auth/login-url`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch login URL from backend: ${errorText}`);
     }
-    
-    // Save Client ID in case they input it manually
-    this.setClientId(clientId);
-
-    const codeVerifier = generateRandomString(64);
-    window.sessionStorage.setItem('spotify_code_verifier', codeVerifier);
-
-    const challenge = await generateCodeChallenge(codeVerifier);
-
-    const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: clientId,
-      scope: SCOPES,
-      code_challenge_method: 'S256',
-      code_challenge: challenge,
-      redirect_uri: REDIRECT_URI,
-    });
-
-    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+    const data = await response.json();
+    if (!data.url) {
+      throw new Error("Authorization URL missing from backend response.");
+    }
+    window.location.href = data.url;
   },
 
   async handleCallback(code: string): Promise<void> {
-    const clientId = this.getClientId();
-    const codeVerifier = window.sessionStorage.getItem('spotify_code_verifier');
-
-    if (!codeVerifier) {
-      throw new Error("OAuth verifier missing from session storage.");
-    }
-
-    const payload = new URLSearchParams({
-      client_id: clientId,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: codeVerifier,
-    });
-
-    const response = await fetch('https://accounts.spotify.com/api/token', {
+    const response = await fetch(`${API_BASE_URL}/api/auth/token`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: payload,
+      body: JSON.stringify({ code }),
     });
 
     if (!response.ok) {
@@ -193,11 +129,9 @@ export const spotifyAuth = {
     };
 
     localStorage.setItem("spotify_session", JSON.stringify(session));
-    window.sessionStorage.removeItem('spotify_code_verifier');
   },
 
   logout() {
     localStorage.removeItem("spotify_session");
-    // We keep the client ID saved in localStorage so they don't have to re-type it
   }
 };

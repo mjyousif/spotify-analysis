@@ -79,9 +79,14 @@ export interface LlmConfigResponse {
   api_base?: string;
 }
 
-export interface SpotifyConfigResponse {
-  client_id: string;
-  redirect_uri: string;
+export interface SpotifyLoginUrlResponse {
+  url: string;
+}
+
+export interface SpotifyTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
 }
 
 export interface PlaylistInfo {
@@ -104,8 +109,18 @@ export const apiService = {
     return response.data;
   },
 
-  async getSpotifyConfig(): Promise<SpotifyConfigResponse> {
-    const response = await api.get<SpotifyConfigResponse>('/api/config/spotify');
+  async getLoginUrl(): Promise<SpotifyLoginUrlResponse> {
+    const response = await api.get<SpotifyLoginUrlResponse>('/api/auth/login-url');
+    return response.data;
+  },
+
+  async exchangeToken(code: string): Promise<SpotifyTokenResponse> {
+    const response = await api.post<SpotifyTokenResponse>('/api/auth/token', { code });
+    return response.data;
+  },
+
+  async refreshToken(refreshToken: string): Promise<SpotifyTokenResponse> {
+    const response = await api.post<SpotifyTokenResponse>('/api/auth/refresh', { refresh_token: refreshToken });
     return response.data;
   },
 

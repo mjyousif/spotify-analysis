@@ -17,7 +17,6 @@ import {
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(spotifyAuth.isLoggedIn());
   const [authLoading, setAuthLoading] = useState<boolean>(false);
-  const [clientIdInput, setClientIdInput] = useState<string>(spotifyAuth.getClientId());
   const [authError, setAuthError] = useState<string | null>(null);
 
   // App States
@@ -103,18 +102,18 @@ function App() {
     }
   }, [isLoggedIn]);
 
-  // Fetch Spotify configuration from backend on load if not logged in
+  // Verify that Spotify is configured on the backend
+  const [isBackendConfigured, setIsBackendConfigured] = useState<boolean>(true);
   useEffect(() => {
     if (!isLoggedIn) {
-      apiService.getSpotifyConfig()
-        .then(data => {
-          if (data.client_id) {
-            spotifyAuth.setClientId(data.client_id);
-            setClientIdInput(data.client_id);
-          }
+      apiService.getLoginUrl()
+        .then(() => {
+          setIsBackendConfigured(true);
         })
         .catch(err => {
-          console.error("Error fetching Spotify config:", err);
+          console.error("Spotify credentials check failed:", err);
+          setIsBackendConfigured(false);
+          setAuthError("Spotify Client ID & Secret are not configured in backend/.env. Please configure them on the backend server to enable login.");
         });
     }
   }, [isLoggedIn]);
@@ -153,14 +152,15 @@ function App() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientIdInput.trim()) {
-      setAuthError("Please enter a valid Spotify Client ID.");
-      return;
-    }
+    setAuthLoading(true);
     setAuthError(null);
-    spotifyAuth.login(clientIdInput.trim()).catch(err => {
-      setAuthError(err.message);
-    });
+    spotifyAuth.login()
+      .catch(err => {
+        setAuthError(err.message || "Failed to initiate Spotify login.");
+      })
+      .finally(() => {
+        setAuthLoading(false);
+      });
   };
 
   // RENDER: Login landing page
@@ -203,40 +203,27 @@ function App() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Right Login Widget */}
+          </div>          {/* Right Login Widget */}
           <div className="w-full max-w-md bg-gray-900/40 border border-gray-800 rounded-2xl p-6 sm:p-8 backdrop-blur-md shadow-2xl shadow-violet-500/5 relative overflow-hidden flex flex-col justify-center">
             <div className="absolute top-0 left-0 w-32 h-32 bg-violet-600/5 rounded-full blur-3xl -ml-10 -mt-10"></div>
             
             <h3 className="text-lg font-bold text-white mb-2">Connect Spotify</h3>
             <p className="text-xs text-gray-500 mb-6 leading-relaxed">
-              We authenticate directly with Spotify using secure OAuth. Your access token is stored safely in your browser session.
+              We authenticate securely via Spotify OAuth. Once connected, you can import and split your playlists directly.
             </p>
 
             <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5 text-left">
-                <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Spotify Client ID</label>
-                <input
-                  type="text"
-                  placeholder="Paste Spotify Client ID"
-                  value={clientIdInput}
-                  onChange={(e) => setClientIdInput(e.target.value)}
-                  className="w-full bg-gray-950/50 border border-gray-800 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-violet-500/80 transition-colors"
-                />
-              </div>
-
               {authError && (
                 <div className="flex items-center space-x-2 text-xs text-red-400 bg-red-950/25 border border-red-900/40 p-3 rounded-xl text-left">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{authError}</span>
+                  <span className="leading-relaxed">{authError}</span>
                 </div>
               )}
 
               <button
                 type="submit"
-                disabled={authLoading}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all duration-300 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center space-x-2 text-sm"
+                disabled={authLoading || !isBackendConfigured}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center space-x-2 text-sm"
               >
                 {authLoading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -248,15 +235,6 @@ function App() {
                 )}
               </button>
             </form>
-
-            <div className="mt-6 border-t border-gray-800/60 pt-4 text-left">
-              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1.5">How to get a Client ID?</span>
-              <ol className="list-decimal list-inside text-[10px] text-gray-500 space-y-1 font-medium">
-                <li>Go to the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Spotify Developer Dashboard</a>.</li>
-                <li>Create an App and set Redirect URI to <code className="bg-gray-950 px-1 py-0.5 rounded text-gray-400">http://[::1]:5173/callback</code>.</li>
-                <li>Copy the "Client ID" and paste it in the box above.</li>
-              </ol>
-            </div>
           </div>
         </div>
       </Layout>
