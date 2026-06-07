@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { apiService } from '../../services/api';
 import type { TrackData, ClusterProfile, Recommendation } from '../../services/api';
-import { Music, Check, ArrowRight, Loader2, Sparkles, Edit2, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Music, Check, ArrowRight, Loader2, Sparkles, Edit2, AlertCircle, ChevronLeft, ChevronRight, Disc } from 'lucide-react';
+import { harmonicSortTracks } from '../../utils/harmonicSort';
 
 interface RecommendationsWidgetProps {
   tracks: TrackData[];
@@ -26,6 +27,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   const [guideTab, setGuideTab] = useState<'cloud' | 'lmstudio' | 'ollama'>('cloud');
   const [exporting, setExporting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [djFlowOrder, setDjFlowOrder] = useState<boolean>(false);
 
   // Tabs scroll references and states
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -134,9 +136,9 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
             ? "A collection of unique tracks that stand out from the playlist's main vibes."
             : `Automatically split playlist.`
         };
-        const clusterTrackUris = tracks
-          .filter(t => t.cluster === clusterId)
-          .map(t => t.uri);
+        const clusterTracks = tracks.filter(t => t.cluster === clusterId);
+        const orderedTracks = djFlowOrder ? harmonicSortTracks(clusterTracks) : clusterTracks;
+        const clusterTrackUris = orderedTracks.map(t => t.uri);
 
         return {
           playlist_name: details.name,
@@ -174,7 +176,10 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   // Helper variables for current tab
   const currentDetails = editableDetails[activeTab] || { name: '', description: '' };
   const currentRec = recommendations.find(r => r.cluster_id === activeTab);
-  const currentClusterTracks = tracks.filter(t => t.cluster === activeTab);
+  const currentClusterTracksRaw = tracks.filter(t => t.cluster === activeTab);
+  const currentClusterTracks = useMemo(() => {
+    return djFlowOrder ? harmonicSortTracks(currentClusterTracksRaw) : currentClusterTracksRaw;
+  }, [currentClusterTracksRaw, djFlowOrder]);
 
   // Cluster colors
   const colors = ['border-violet-500 text-violet-400', 'border-emerald-500 text-emerald-400', 'border-blue-500 text-blue-400', 'border-amber-500 text-amber-400', 'border-pink-500 text-pink-400'];
@@ -414,14 +419,58 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
         </div>
 
         {/* Action Button & Errors */}
-        <div className="pt-2 border-t border-gray-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-          {error && (
-            <div className="flex items-center space-x-2 text-xs text-red-400 bg-red-950/20 border border-red-900/40 p-2 rounded-xl">
-              <AlertCircle className="w-4 h-4" />
-              <span>{error}</span>
+        <div className="pt-3 border-t border-gray-800/40 flex flex-col gap-3">
+          {/* DJ Flow Toggle */}
+          <label
+            htmlFor="dj-flow-toggle"
+            className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl border transition-all duration-300 cursor-pointer select-none ${
+              djFlowOrder
+                ? 'bg-emerald-950/30 border-emerald-500/30'
+                : 'bg-gray-950/30 border-gray-850 hover:border-gray-700'
+            }`}
+          >
+            <div className="flex items-center space-x-2.5">
+              <div className={`p-1.5 rounded-lg transition-colors duration-300 ${
+                djFlowOrder
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : 'bg-gray-800/60 text-gray-500'
+              }`}>
+                <Disc className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className={`text-xs font-bold transition-colors duration-300 ${
+                  djFlowOrder ? 'text-emerald-300' : 'text-gray-300'
+                }`}>DJ Flow Order</span>
+                <p className={`text-[9px] font-medium transition-colors duration-300 ${
+                  djFlowOrder ? 'text-emerald-500/70' : 'text-gray-550'
+                }`}>Reorder each split by harmonic key compatibility before export</p>
+              </div>
             </div>
-          )}
-          <div className="flex-1"></div>
+            <div className="relative flex-shrink-0">
+              <input
+                id="dj-flow-toggle"
+                type="checkbox"
+                checked={djFlowOrder}
+                onChange={(e) => setDjFlowOrder(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className={`w-9 h-5 rounded-full transition-colors duration-300 ${
+                djFlowOrder ? 'bg-emerald-500' : 'bg-gray-700'
+              }`}></div>
+              <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-300 ${
+                djFlowOrder ? 'translate-x-4' : 'translate-x-0'
+              }`}></div>
+            </div>
+          </label>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            {error && (
+              <div className="flex items-center space-x-2 text-xs text-red-400 bg-red-950/20 border border-red-900/40 p-2 rounded-xl">
+                <AlertCircle className="w-4 h-4" />
+                <span>{error}</span>
+              </div>
+            )}
+            <div className="flex-1"></div>
           
           <button
             onClick={handleExport}
@@ -441,6 +490,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
               </>
             )}
           </button>
+          </div>
         </div>
       </div>
     </div>
