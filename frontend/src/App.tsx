@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { spotifyAuth } from './services/spotifyAuth';
 import { apiService } from './services/api';
 import type { PlaylistInfo, TrackData, AnalysisResponse } from './services/api';
@@ -152,9 +152,12 @@ function App() {
   };
 
   // 4. Handle Preview Audio Controls
-  const handleSelectTrack = (track: TrackData) => {
+  // useCallback with [] so this function reference NEVER changes across re-renders.
+  // A new reference would propagate into ScatterPlotWidget and cause Plotly to
+  // re-render its chart, detaching the internal click listeners mid-session.
+  const handleSelectTrack = useCallback((track: TrackData) => {
     setSelectedTrack(track);
-  };
+  }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
