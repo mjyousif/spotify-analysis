@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { TrackData } from '../../services/api';
 import { Disc, CheckCircle2 } from 'lucide-react';
-import { computeHarmonicSequence, type HarmonicSequenceItem } from '../../utils/harmonicSort';
+import { computeHarmonicSequence } from '../../utils/harmonicSort';
 
 interface DJDeckWidgetProps {
   tracks: TrackData[];
