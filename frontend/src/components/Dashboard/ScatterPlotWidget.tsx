@@ -11,7 +11,7 @@ interface ScatterPlotWidgetProps {
   recommendations: Recommendation[];
   selectedTrack: TrackData | null;
   onSelectTrack: (track: TrackData) => void;
-  dimReduction?: 'pca' | 'umap' | 'tsne';
+  dimReduction?: 'pca' | 'umap' | 'tsne' | 'mds';
 }
 
 export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({

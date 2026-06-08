@@ -30,7 +30,7 @@ function App() {
   // Analysis States
   const [kValue, setKValue] = useState<number>(3);
   const [algorithm, setAlgorithm] = useState<'kmeans' | 'agglomerative' | 'dbscan'>('kmeans');
-  const [dimReduction, setDimReduction] = useState<'pca' | 'umap' | 'tsne'>('pca');
+  const [dimReduction, setDimReduction] = useState<'pca' | 'umap' | 'tsne' | 'mds'>('pca');
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -124,7 +124,7 @@ function App() {
   }, [isLoggedIn]);
 
   // 3. Run Vibe Analysis on a Playlist
-  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan', customDimRed?: 'pca' | 'umap' | 'tsne') => {
+  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan', customDimRed?: 'pca' | 'umap' | 'tsne' | 'mds') => {
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
     setAnalysisError(null);
@@ -347,7 +347,7 @@ function App() {
               <select
                 value={dimReduction}
                 onChange={(e) => {
-                  const val = e.target.value as 'pca' | 'umap' | 'tsne';
+                  const val = e.target.value as 'pca' | 'umap' | 'tsne' | 'mds';
                   setDimReduction(val);
                   handleRunAnalysis(selectedPlaylistId!, algorithm === 'dbscan' ? undefined : kValue, algorithm, val);
                 }}
@@ -356,6 +356,7 @@ function App() {
                 <option value="pca">PCA</option>
                 <option value="umap">UMAP</option>
                 <option value="tsne">t-SNE</option>
+                <option value="mds">MDS</option>
               </select>
             </div>
 

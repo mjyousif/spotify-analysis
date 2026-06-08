@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE, MDS
 import umap
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
@@ -167,6 +167,9 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                     if perplexity < 1.0:
                         perplexity = 1.0
                     reducer = TSNE(n_components=2, perplexity=perplexity, random_state=42)
+                    coords = reducer.fit_transform(X_scaled)
+                elif dim_reduction == "mds" and num_tracks >= 2:
+                    reducer = MDS(n_components=2, random_state=42, normalized_stress='auto')
                     coords = reducer.fit_transform(X_scaled)
                 else:
                     # fallback to pca
