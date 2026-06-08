@@ -3,6 +3,8 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+import umap
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
 
@@ -151,16 +153,40 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         context["k"] = len(active_vibes)
         context["cluster_labels"] = cluster_labels
         
-        # 5. Dimensionality Reduction (PCA) to 2D
+        # 5. Dimensionality Reduction to 2D
         if num_tracks >= 2:
+            dim_reduction = context.get("dim_reduction", "pca").lower()
             try:
-                pca = PCA(n_components=2, random_state=42)
-                coords = pca.fit_transform(X_scaled)
+                if dim_reduction == "umap" and num_tracks >= 3:
+                    n_neighbors = min(15, num_tracks - 1)
+                    reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors, random_state=42)
+                    coords = reducer.fit_transform(X_scaled)
+                elif dim_reduction == "tsne" and num_tracks >= 3:
+                    perplexity = min(30.0, float(num_tracks - 1) / 3.0)
+                    # TSNE perplexity must be less than n_samples
+                    if perplexity < 1.0:
+                        perplexity = 1.0
+                    reducer = TSNE(n_components=2, perplexity=perplexity, random_state=42)
+                    coords = reducer.fit_transform(X_scaled)
+                else:
+                    # fallback to pca
+                    pca = PCA(n_components=2, random_state=42)
+                    coords = pca.fit_transform(X_scaled)
+
                 x_coords = coords[:, 0].tolist()
                 y_coords = coords[:, 1].tolist()
-            except Exception:
-                x_coords = [0.0] * num_tracks
-                y_coords = [0.0] * num_tracks
+            except Exception as e:
+                import logging
+                logging.error(f"Dim reduction failed: {e}")
+                # Fallback to PCA if others fail
+                try:
+                    pca = PCA(n_components=2, random_state=42)
+                    coords = pca.fit_transform(X_scaled)
+                    x_coords = coords[:, 0].tolist()
+                    y_coords = coords[:, 1].tolist()
+                except:
+                    x_coords = [0.0] * num_tracks
+                    y_coords = [0.0] * num_tracks
         else:
             x_coords = [0.0] * num_tracks
             y_coords = [0.0] * num_tracks

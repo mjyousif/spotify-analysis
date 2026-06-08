@@ -30,6 +30,7 @@ function App() {
   // Analysis States
   const [kValue, setKValue] = useState<number>(3);
   const [algorithm, setAlgorithm] = useState<'kmeans' | 'agglomerative' | 'dbscan'>('kmeans');
+  const [dimReduction, setDimReduction] = useState<'pca' | 'umap' | 'tsne'>('pca');
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -123,7 +124,7 @@ function App() {
   }, [isLoggedIn]);
 
   // 3. Run Vibe Analysis on a Playlist
-  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan') => {
+  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan', customDimRed?: 'pca' | 'umap' | 'tsne') => {
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
     setAnalysisError(null);
@@ -131,8 +132,9 @@ function App() {
     setSelectedTrack(null);
 
     const algoToUse = customAlgo !== undefined ? customAlgo : algorithm;
+    const dimRedToUse = customDimRed !== undefined ? customDimRed : dimReduction;
 
-    apiService.analyzePlaylist(playlistId, customK, algoToUse)
+    apiService.analyzePlaylist(playlistId, customK, algoToUse, dimRedToUse)
       .then(data => {
         setAnalysisData(data);
         if (customK === undefined && data.recommended_k) {
@@ -329,13 +331,31 @@ function App() {
                 onChange={(e) => {
                   const val = e.target.value as 'kmeans' | 'agglomerative' | 'dbscan';
                   setAlgorithm(val);
-                  handleRunAnalysis(selectedPlaylistId!, val === 'dbscan' ? undefined : kValue, val);
+                  handleRunAnalysis(selectedPlaylistId!, val === 'dbscan' ? undefined : kValue, val, dimReduction);
                 }}
                 className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors"
               >
                 <option value="kmeans">K-Means (Balanced)</option>
                 <option value="agglomerative">Hierarchical (Deterministic)</option>
                 <option value="dbscan">DBSCAN (Outliers Filter)</option>
+              </select>
+            </div>
+
+            {/* Dim Reduction Select */}
+            <div className="flex items-center space-x-2 border-l border-gray-800/80 pl-4">
+              <span className="text-xs text-gray-400 font-bold">Dim Reduction:</span>
+              <select
+                value={dimReduction}
+                onChange={(e) => {
+                  const val = e.target.value as 'pca' | 'umap' | 'tsne';
+                  setDimReduction(val);
+                  handleRunAnalysis(selectedPlaylistId!, algorithm === 'dbscan' ? undefined : kValue, algorithm, val);
+                }}
+                className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors uppercase"
+              >
+                <option value="pca">PCA</option>
+                <option value="umap">UMAP</option>
+                <option value="tsne">t-SNE</option>
               </select>
             </div>
 
@@ -366,7 +386,7 @@ function App() {
                 </div>
                 <span className="text-xs font-bold text-white min-w-[50px]">{kValue} vibes</span>
                 <button
-                  onClick={() => handleRunAnalysis(selectedPlaylistId, kValue)}
+                  onClick={() => handleRunAnalysis(selectedPlaylistId, kValue, algorithm, dimReduction)}
                   disabled={analysisLoading}
                   className="bg-violet-650 hover:bg-violet-500 disabled:bg-violet-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
                 >
@@ -422,6 +442,7 @@ function App() {
                   recommendations={analysisData.recommendations}
                   selectedTrack={selectedTrack}
                   onSelectTrack={handleSelectTrack}
+                  dimReduction={dimReduction}
                 />
               </ErrorBoundary>
             </div>

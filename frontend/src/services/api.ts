@@ -130,10 +130,11 @@ export const apiService = {
     return response.data;
   },
 
-  async analyzePlaylist(playlistId: string, k?: number, algorithm?: string): Promise<AnalysisResponse> {
+  async analyzePlaylist(playlistId: string, k?: number, algorithm?: string, dimReduction?: string): Promise<AnalysisResponse> {
     const params: Record<string, any> = {};
     if (k !== undefined) params.k = k;
     if (algorithm !== undefined) params.algorithm = algorithm;
+    if (dimReduction !== undefined) params.dim_reduction = dimReduction;
     const response = await api.get<AnalysisResponse>(`/api/analysis/playlist/${playlistId}`, { params });
     return response.data;
   },

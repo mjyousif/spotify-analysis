@@ -11,6 +11,7 @@ interface ScatterPlotWidgetProps {
   recommendations: Recommendation[];
   selectedTrack: TrackData | null;
   onSelectTrack: (track: TrackData) => void;
+  dimReduction?: 'pca' | 'umap' | 'tsne';
 }
 
 export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
@@ -18,7 +19,8 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
   clusters,
   recommendations,
   selectedTrack,
-  onSelectTrack
+  onSelectTrack,
+  dimReduction = 'pca'
 }) => {
   const plotRef = useRef<HTMLDivElement>(null);
   const isPlotInitialized = useRef(false);
@@ -204,7 +206,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-lg font-bold text-white tracking-tight">Vibe Similarity Map</h3>
-          <p className="text-xs text-gray-500">PCA reduction of track acoustics. Similar tracks gather close together.</p>
+          <p className="text-xs text-gray-500">{dimReduction.toUpperCase()} reduction of track acoustics. Similar tracks gather close together.</p>
         </div>
       </div>
 

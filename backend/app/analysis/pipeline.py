@@ -16,7 +16,7 @@ class AnalysisPipeline:
     def register_processor(self, processor: BaseAnalysisProcessor) -> None:
         self.processors.append(processor)
         
-    def run(self, access_token: str, tracks: List[Dict[str, Any]], k: int = None, algorithm: str = "kmeans") -> Dict[str, Any]:
+    def run(self, access_token: str, tracks: List[Dict[str, Any]], k: int = None, algorithm: str = "kmeans", dim_reduction: str = "pca") -> Dict[str, Any]:
         """
         Gathers raw data, builds DataFrames, runs all processors, 
         and packages the final payload.
@@ -28,7 +28,7 @@ class AnalysisPipeline:
                 "recommendations": []
             }
             
-        logger.info(f"Running analysis pipeline on {len(tracks)} tracks with k={k}, algorithm={algorithm}")
+        logger.info(f"Running analysis pipeline on {len(tracks)} tracks with k={k}, algorithm={algorithm}, dim_reduction={dim_reduction}")
         
         # 1. Fetch artist details (genres) from Spotify
         artist_ids = set()
@@ -82,7 +82,8 @@ class AnalysisPipeline:
             "k": k,
             "algorithm": algorithm,
             "artist_genres": genres_map,
-            "access_token": access_token
+            "access_token": access_token,
+            "dim_reduction": dim_reduction
         }
         
         # 6. Run all registered processors
