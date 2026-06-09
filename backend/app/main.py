@@ -395,7 +395,7 @@ def analyze_track_lyrics(
                 }
             }
             
-            if is_instrumental or not lyrics_text.strip():
+            if is_instrumental:
                 analysis_data = {
                     "mood": "instrumental",
                     "sentiment_score": 0.0,
@@ -403,6 +403,8 @@ def analyze_track_lyrics(
                     "prominent_words": [],
                     "summary": "This track is instrumental, carrying mood through sound and rhythm rather than lyrics."
                 }
+            elif not lyrics_text.strip():
+                analysis_data = processor._run_heuristic_analysis(track_mock, lyrics_text)
             else:
                 # Check if LLM is active
                 from app.analysis.processors.vibe_splitters import resolve_llm_config

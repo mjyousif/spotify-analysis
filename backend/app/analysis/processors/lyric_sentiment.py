@@ -115,7 +115,7 @@ class LyricSentimentProcessor(BaseAnalysisProcessor):
                 if analysis_data is None:
                     # Cache miss: Run analysis
                     try:
-                        if is_instrumental or not lyrics_text.strip():
+                        if is_instrumental:
                             analysis_data = {
                                 "mood": "instrumental",
                                 "sentiment_score": 0.0,
@@ -123,6 +123,8 @@ class LyricSentimentProcessor(BaseAnalysisProcessor):
                                 "prominent_words": [],
                                 "summary": "This track is instrumental, carrying mood through sound and rhythm rather than lyrics."
                             }
+                        elif not lyrics_text.strip():
+                            analysis_data = self._run_heuristic_analysis(track, lyrics_text)
                         elif use_llm:
                             # Run LLM-based analysis
                             analysis_data = self._run_llm_analysis(
@@ -134,7 +136,6 @@ class LyricSentimentProcessor(BaseAnalysisProcessor):
                             analysis_data = self._run_heuristic_analysis(track, lyrics_text)
                             
                         # Save to cache
-                        cache.set_track_lyric_analysis(tid)
                         try:
                             cache.set_track_lyric_analysis(tid, analysis_data)
                         except Exception as e:
