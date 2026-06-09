@@ -30,7 +30,7 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
           onChange={(e) => {
             const val = e.target.value as 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic';
             setAlgorithm(val);
-            onUpdateMap(val === 'dbscan' ? undefined : kValue, val);
+            onUpdateMap(undefined, val);
           }}
           className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors"
         >

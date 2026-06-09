@@ -105,6 +105,7 @@ export interface AnalysisResponse {
   llm_provider?: string;
   llm_model?: string;
   recommended_k?: number;
+  default_projection?: 'pca' | 'tsne' | 'umap' | 'circumplex';
   lyrics_analysis?: LyricsAnalysisData;
 }
 

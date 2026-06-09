@@ -6,6 +6,14 @@ from .base import BaseVibeSplitter, safe_float
 from .dimensionality import compute_pca_coords
 
 class MoodMappingSplitter(BaseVibeSplitter):
+    @property
+    def default_projection(self) -> str:
+        return "circumplex"
+
+    def get_recommended_k(self, X_scaled: np.ndarray) -> int:
+        num_tracks = X_scaled.shape[0]
+        return min(4, num_tracks) if num_tracks >= 1 else 4
+
     def split(self, tracks_df: pd.DataFrame, features_df: pd.DataFrame, X_scaled: np.ndarray, k: int, context: Dict[str, Any]):
         num_tracks = len(tracks_df)
         cluster_labels = np.zeros(num_tracks, dtype=int)

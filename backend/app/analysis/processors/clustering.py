@@ -21,42 +21,6 @@ def safe_int(val: Any, default: int) -> int:
     except (ValueError, TypeError):
         return default
 
-def calculate_recommended_k(X_scaled: np.ndarray) -> int:
-    num_tracks = X_scaled.shape[0]
-    if num_tracks <= 3:
-        return 2
-    
-    # We want to search between 2 and min(6, num_tracks - 1)
-    max_k = min(6, num_tracks - 1)
-    if max_k < 2:
-        return 2
-        
-    best_k = 3
-    best_score = -1.0
-    
-    # Try different values of k and evaluate using Silhouette Score
-    from sklearn.metrics import silhouette_score
-    
-    for k in range(2, max_k + 1):
-        try:
-            kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
-            labels = kmeans.fit_predict(X_scaled)
-            score = silhouette_score(X_scaled, labels)
-            if score > best_score:
-                best_score = score
-                best_k = k
-        except Exception:
-            continue
-            
-    # Cap k based on playlist size to keep vibes appropriately sized
-    if num_tracks < 12:
-        best_k = min(best_k, 2)
-    elif num_tracks < 24:
-        best_k = min(best_k, 3)
-    elif num_tracks < 40:
-        best_k = min(best_k, 4)
-        
-    return best_k
 
 class VibeClusteringProcessor(BaseAnalysisProcessor):
     """
@@ -93,7 +57,9 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         X_scaled = scaler.fit_transform(X)
         
         # 3. Determine recommended and active K
-        recommended_k = calculate_recommended_k(X_scaled)
+        algorithm = context.get("algorithm", "kmeans")
+        splitter = get_vibe_splitter(algorithm)
+        recommended_k = splitter.get_recommended_k(X_scaled)
         
         context_k = context.get("k")
         if context_k is None:
@@ -109,11 +75,8 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             k = 1
         if k > num_tracks:
             k = num_tracks
-            
-        algorithm = context.get("algorithm", "kmeans")
         
         # 4. Perform Clustering / Vibe Splitting based on selected algorithm
-        splitter = get_vibe_splitter(algorithm)
         cluster_labels, x_coords, y_coords, recommendations = splitter.split(
             tracks_df, features_df, X_scaled, k, context
         )
@@ -243,7 +206,8 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         result = {
             "tracks": processed_tracks,
             "clusters": cluster_profiles,
-            "recommended_k": recommended_k
+            "recommended_k": recommended_k,
+            "default_projection": splitter.default_projection
         }
         if recommendations is not None:
             result["recommendations"] = recommendations

@@ -26,6 +26,45 @@ def is_valid_key(key: str) -> bool:
     return True
 
 class BaseVibeSplitter(ABC):
+    @property
+    def default_projection(self) -> str:
+        return "pca"
+
+    def get_recommended_k(self, X_scaled: np.ndarray) -> int:
+        num_tracks = X_scaled.shape[0]
+        if num_tracks <= 3:
+            return 2
+        
+        max_k = min(6, num_tracks - 1)
+        if max_k < 2:
+            return 2
+            
+        best_k = 3
+        best_score = -1.0
+        
+        from sklearn.cluster import KMeans
+        from sklearn.metrics import silhouette_score
+        
+        for k in range(2, max_k + 1):
+            try:
+                kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
+                labels = kmeans.fit_predict(X_scaled)
+                score = silhouette_score(X_scaled, labels)
+                if score > best_score:
+                    best_score = score
+                    best_k = k
+            except Exception:
+                continue
+                
+        if num_tracks < 12:
+            best_k = min(best_k, 2)
+        elif num_tracks < 24:
+            best_k = min(best_k, 3)
+        elif num_tracks < 40:
+            best_k = min(best_k, 4)
+            
+        return best_k
+
     @abstractmethod
     def split(
         self,

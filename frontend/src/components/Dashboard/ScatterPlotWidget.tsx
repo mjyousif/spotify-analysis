@@ -11,6 +11,7 @@ interface ScatterPlotWidgetProps {
   recommendations: Recommendation[];
   selectedTrack: TrackData | null;
   onSelectTrack: (track: TrackData) => void;
+  defaultProjection?: 'pca' | 'tsne' | 'umap' | 'circumplex';
 }
 
 export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
@@ -18,11 +19,19 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
   clusters,
   recommendations,
   selectedTrack,
-  onSelectTrack
+  onSelectTrack,
+  defaultProjection = 'pca'
 }) => {
-  const [projectionMode, setProjectionMode] = React.useState<'pca' | 'tsne' | 'umap' | 'circumplex'>('pca');
+  const [projectionMode, setProjectionMode] = React.useState<'pca' | 'tsne' | 'umap' | 'circumplex'>(defaultProjection);
   const plotRef = useRef<HTMLDivElement>(null);
   const isPlotInitialized = useRef(false);
+
+  // Synchronize projection mode when default projection from backend changes
+  useEffect(() => {
+    if (defaultProjection) {
+      setProjectionMode(defaultProjection);
+    }
+  }, [defaultProjection]);
 
   // Keep a mutable ref to the latest callback so we don't need to re-bindlisteners
   const onSelectTrackRef = useRef(onSelectTrack);

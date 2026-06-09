@@ -205,6 +205,7 @@ function App() {
                   recommendations={analysisData.recommendations}
                   selectedTrack={selectedTrack}
                   onSelectTrack={handleSelectTrack}
+                  defaultProjection={analysisData.default_projection}
                 />
               </ErrorBoundary>
             </div>
