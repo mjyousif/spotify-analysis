@@ -26,6 +26,10 @@ def analyze_playlist(
     playlist_id: str,
     k: int = Query(None, description="Number of clusters/vibe splits to create", ge=1, le=10),
     algorithm: str = Query("kmeans", description="Clustering algorithm to use"),
+    genre_weight: float = Query(0.0, description="Weight of artist genres", ge=0.0, le=5.0),
+    era_weight: float = Query(0.0, description="Weight of release decade/year", ge=0.0, le=5.0),
+    popularity_weight: float = Query(0.0, description="Weight of track popularity", ge=0.0, le=5.0),
+    lyrics_weight: float = Query(0.0, description="Weight of lyrics sentiment", ge=0.0, le=5.0),
     token: str = Depends(get_spotify_token)
 ):
     """
@@ -45,7 +49,16 @@ def analyze_playlist(
             
         # 2. Run analysis pipeline
         pipeline = create_default_pipeline()
-        result = pipeline.run(token, tracks, k, algorithm)
+        result = pipeline.run(
+            token, 
+            tracks, 
+            k, 
+            algorithm,
+            genre_weight=genre_weight,
+            era_weight=era_weight,
+            popularity_weight=popularity_weight,
+            lyrics_weight=lyrics_weight
+        )
         return result
         
     except SpotifyAPIError as e:

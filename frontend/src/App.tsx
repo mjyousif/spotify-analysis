@@ -48,6 +48,12 @@ function App() {
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  // Feature Influence Weight States (Default to 0.0 for backward-compatible pure audio)
+  const [genreWeight, setGenreWeight] = useState<number>(0.0);
+  const [eraWeight, setEraWeight] = useState<number>(0.0);
+  const [popularityWeight, setPopularityWeight] = useState<number>(0.0);
+  const [lyricsWeight, setLyricsWeight] = useState<number>(0.0);
+
   // Selection State
   const [selectedTrack, setSelectedTrack] = useState<TrackData | null>(null);
   const [loadSpotifyEmbed, setLoadSpotifyEmbed] = useState<boolean>(false);
@@ -66,7 +72,11 @@ function App() {
   const handleRunAnalysis = (
     playlistId: string,
     customK?: number,
-    customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic'
+    customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic',
+    customGenreWeight?: number,
+    customEraWeight?: number,
+    customPopularityWeight?: number,
+    customLyricsWeight?: number
   ) => {
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
@@ -75,8 +85,12 @@ function App() {
     setSelectedTrack(null);
 
     const algoToUse = customAlgo !== undefined ? customAlgo : algorithm;
+    const gWeight = customGenreWeight !== undefined ? customGenreWeight : genreWeight;
+    const eWeight = customEraWeight !== undefined ? customEraWeight : eraWeight;
+    const pWeight = customPopularityWeight !== undefined ? customPopularityWeight : popularityWeight;
+    const lWeight = customLyricsWeight !== undefined ? customLyricsWeight : lyricsWeight;
 
-    apiService.analyzePlaylist(playlistId, customK, algoToUse)
+    apiService.analyzePlaylist(playlistId, customK, algoToUse, gWeight, eWeight, pWeight, lWeight)
       .then(data => {
         setAnalysisData(data);
         if (customK === undefined && data.recommended_k) {
@@ -162,8 +176,16 @@ function App() {
             setAlgorithm={setAlgorithm}
             kValue={kValue}
             setKValue={setKValue}
+            genreWeight={genreWeight}
+            setGenreWeight={setGenreWeight}
+            eraWeight={eraWeight}
+            setEraWeight={setEraWeight}
+            popularityWeight={popularityWeight}
+            setPopularityWeight={setPopularityWeight}
+            lyricsWeight={lyricsWeight}
+            setLyricsWeight={setLyricsWeight}
             recommendedK={analysisData.recommended_k}
-            onUpdateMap={(k, algo) => handleRunAnalysis(selectedPlaylistId, k, algo)}
+            onUpdateMap={(k, algo, gw, ew, pw, lw) => handleRunAnalysis(selectedPlaylistId, k, algo, gw, ew, pw, lw)}
             loading={analysisLoading}
           />
         )}
