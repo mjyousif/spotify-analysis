@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN
-from sklearn.decomposition import PCA
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
+from app.analysis.processors.vibe_splitters import get_vibe_splitter
 
 def safe_float(val: Any, default: float) -> float:
     if val is None or pd.isna(val):
@@ -113,63 +112,18 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             
         algorithm = context.get("algorithm", "kmeans")
         
-        # 4. Perform Clustering based on selected algorithm
-        if num_tracks >= 2:
-            if algorithm == "agglomerative":
-                try:
-                    agglomerative = AgglomerativeClustering(n_clusters=k, linkage="ward")
-                    cluster_labels = agglomerative.fit_predict(X_scaled)
-                except Exception:
-                    cluster_labels = np.zeros(num_tracks, dtype=int)
-            elif algorithm == "dbscan":
-                try:
-                    # Self-tuning DBSCAN with wider epsilon and min_samples=3 to prevent tiny splits
-                    eps_val = 0.45
-                    dbscan = DBSCAN(eps=eps_val, min_samples=3)
-                    cluster_labels = dbscan.fit_predict(X_scaled)
-                    
-                    # If all tracks are outliers, try a larger epsilon
-                    num_outliers = np.sum(cluster_labels == -1)
-                    if num_outliers == num_tracks:
-                        eps_val = 0.6
-                        dbscan = DBSCAN(eps=eps_val, min_samples=3)
-                        cluster_labels = dbscan.fit_predict(X_scaled)
-                        
-                    # Re-assign any small clusters (size < 3) to outliers (-1)
-                    unique, counts = np.unique(cluster_labels, return_counts=True)
-                    for val, count in zip(unique, counts):
-                        if val != -1 and count < 3:
-                            cluster_labels[cluster_labels == val] = -1
-                except Exception:
-                    cluster_labels = np.zeros(num_tracks, dtype=int)
-            else: # kmeans
-                try:
-                    kmeans = KMeans(n_clusters=k, random_state=42, n_init="auto")
-                    cluster_labels = kmeans.fit_predict(X_scaled)
-                except Exception:
-                    cluster_labels = np.zeros(num_tracks, dtype=int)
-        else:
-            cluster_labels = np.zeros(num_tracks, dtype=int)
+        # 4. Perform Clustering / Vibe Splitting based on selected algorithm
+        splitter = get_vibe_splitter(algorithm)
+        cluster_labels, x_coords, y_coords, recommendations = splitter.split(
+            tracks_df, features_df, X_scaled, k, context
+        )
             
         # Update context so subsequent processors know the actual vibes count
         unique_labels = set(cluster_labels)
         active_vibes = unique_labels - {-1}
         context["k"] = len(active_vibes)
         context["cluster_labels"] = cluster_labels
-        
-        # 5. Dimensionality Reduction (PCA) to 2D
-        if num_tracks >= 2:
-            try:
-                pca = PCA(n_components=2, random_state=42)
-                coords = pca.fit_transform(X_scaled)
-                x_coords = coords[:, 0].tolist()
-                y_coords = coords[:, 1].tolist()
-            except Exception:
-                x_coords = [0.0] * num_tracks
-                y_coords = [0.0] * num_tracks
-        else:
-            x_coords = [0.0] * num_tracks
-            y_coords = [0.0] * num_tracks
+        context["llm_recommendations"] = recommendations
             
         # 6. Merge results and format track list
         processed_tracks = []
@@ -276,8 +230,12 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         context["cluster_profiles"] = cluster_profiles
         context["processed_tracks"] = processed_tracks
         
-        return {
+        result = {
             "tracks": processed_tracks,
             "clusters": cluster_profiles,
             "recommended_k": recommended_k
         }
+        if recommendations is not None:
+            result["recommendations"] = recommendations
+            
+        return result

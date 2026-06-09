@@ -46,70 +46,19 @@ class LLMRecommendationProcessor(BaseAnalysisProcessor):
         cluster_profiles = context.get("cluster_profiles", [])
         if not cluster_profiles:
             return {"recommendations": []}
-            
-        # Determine model, provider, api_base, and api_key to use
-        provider = settings.llm_provider.lower().strip() if settings.llm_provider else ""
-        model_override = settings.llm_model.strip() if settings.llm_model else ""
-        api_base = None
-        api_key = None
-        has_llm_key = False
 
-        if provider:
-            if provider == "lm_studio":
-                has_llm_key = True
-                api_base = settings.lm_studio_api_base
-                actual_model = f"lm_studio/{model_override}" if model_override else "lm_studio/local-model"
-                api_key = "lm-studio"
-            elif provider == "ollama":
-                has_llm_key = True
-                api_base = settings.ollama_api_base
-                actual_model = f"ollama/{model_override}" if model_override else "ollama/llama3"
-                api_key = "ollama"
-            elif provider == "gemini":
-                val = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
-                has_llm_key = is_valid_key(val)
-                api_key = val if has_llm_key else None
-                actual_model = f"gemini/{model_override}" if model_override else "gemini/gemini-1.5-flash"
-            elif provider == "openai":
-                val = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
-                has_llm_key = is_valid_key(val)
-                api_key = val if has_llm_key else None
-                actual_model = model_override if model_override else "gpt-4o-mini"
-            elif provider == "anthropic":
-                val = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-                has_llm_key = is_valid_key(val)
-                api_key = val if has_llm_key else None
-                actual_model = f"anthropic/{model_override}" if model_override else "anthropic/claude-3-haiku-20240307"
-            else:
-                actual_model = model_override
-                val = os.environ.get("OPENAI_API_KEY", "")
-                has_llm_key = is_valid_key(val) or bool(actual_model)
-                api_key = val if is_valid_key(val) else None
-        else:
-            # Auto-detect provider based on environment keys
-            gemini_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
-            openai_key = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
-            anthropic_key = settings.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        # Check if recommendations were already generated (e.g. by LLM Semantic Splitter)
+        llm_recommendations = context.get("llm_recommendations")
+        from app.analysis.processors.vibe_splitters import resolve_llm_config
+        provider, actual_model, api_base, api_key, has_llm_key = resolve_llm_config()
 
-            if is_valid_key(gemini_key):
-                provider = "gemini"
-                actual_model = "gemini/gemini-1.5-flash"
-                api_key = gemini_key
-                has_llm_key = True
-            elif is_valid_key(openai_key):
-                provider = "openai"
-                actual_model = "gpt-4o-mini"
-                api_key = openai_key
-                has_llm_key = True
-            elif is_valid_key(anthropic_key):
-                provider = "anthropic"
-                actual_model = "anthropic/claude-3-haiku-20240307"
-                api_key = anthropic_key
-                has_llm_key = True
-            else:
-                provider = "none"
-                actual_model = "none"
-                has_llm_key = False
+        if llm_recommendations is not None:
+            return {
+                "recommendations": llm_recommendations,
+                "llm_active": has_llm_key,
+                "llm_provider": provider,
+                "llm_model": actual_model
+            }
 
         recommendations = []
         

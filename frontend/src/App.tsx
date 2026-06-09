@@ -29,7 +29,7 @@ function App() {
   
   // Analysis States
   const [kValue, setKValue] = useState<number>(3);
-  const [algorithm, setAlgorithm] = useState<'kmeans' | 'agglomerative' | 'dbscan'>('kmeans');
+  const [algorithm, setAlgorithm] = useState<'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic'>('kmeans');
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -123,7 +123,7 @@ function App() {
   }, [isLoggedIn]);
 
   // 3. Run Vibe Analysis on a Playlist
-  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan') => {
+  const handleRunAnalysis = (playlistId: string, customK?: number, customAlgo?: 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic') => {
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
     setAnalysisError(null);
@@ -327,7 +327,7 @@ function App() {
               <select
                 value={algorithm}
                 onChange={(e) => {
-                  const val = e.target.value as 'kmeans' | 'agglomerative' | 'dbscan';
+                  const val = e.target.value as 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic';
                   setAlgorithm(val);
                   handleRunAnalysis(selectedPlaylistId!, val === 'dbscan' ? undefined : kValue, val);
                 }}
@@ -336,6 +336,9 @@ function App() {
                 <option value="kmeans">K-Means (Balanced)</option>
                 <option value="agglomerative">Hierarchical (Deterministic)</option>
                 <option value="dbscan">DBSCAN (Outliers Filter)</option>
+                <option value="mood_mapping">Mood Mapping (2D Circumplex)</option>
+                <option value="genre_first">Genre-First Hierarchical</option>
+                <option value="llm_semantic">AI Semantic Splitting</option>
               </select>
             </div>
 
