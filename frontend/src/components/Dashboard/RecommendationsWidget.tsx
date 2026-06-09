@@ -12,6 +12,8 @@ interface RecommendationsWidgetProps {
   llm_active?: boolean;
   llm_provider?: string;
   llm_model?: string;
+  selectedTrack?: TrackData | null;
+  onSelectTrack?: (track: TrackData) => void;
 }
 
 export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
@@ -21,7 +23,9 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   onExportSuccess,
   llm_active = true,
   llm_provider,
-  llm_model
+  llm_model,
+  selectedTrack,
+  onSelectTrack
 }) => {
   const [activeTab, setActiveTab] = useState<number>(0);
   const [guideTab, setGuideTab] = useState<'cloud' | 'lmstudio' | 'ollama'>('cloud');
@@ -33,6 +37,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
 
   // Tabs scroll references and states
   const tabsRef = useRef<HTMLDivElement>(null);
+  const tracksListRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState<boolean>(false);
   const [showRightArrow, setShowRightArrow] = useState<boolean>(false);
 
@@ -94,6 +99,29 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
       });
     }
   };
+
+  // Sync activeTab when selectedTrack changes
+  useEffect(() => {
+    if (selectedTrack && selectedTrack.cluster !== activeTab) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab(selectedTrack.cluster);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrack]);
+
+  // Scroll selected track into view when tab aligns
+  useEffect(() => {
+    if (selectedTrack && selectedTrack.cluster === activeTab && tracksListRef.current) {
+      const container = tracksListRef.current;
+      const targetEl = container.querySelector(`[data-track-id="${selectedTrack.id}"]`) as HTMLElement;
+      if (targetEl) {
+        targetEl.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    }
+  }, [selectedTrack, activeTab]);
   
   // Local state for editable playlist details
   const [editableDetails, setEditableDetails] = useState<
@@ -159,6 +187,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
       } else {
         throw new Error(result.message || "Failed to create playlists.");
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || err.message || "An error occurred during export.");
@@ -167,14 +196,6 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
     }
   };
 
-  if (recommendations.length === 0) {
-    return (
-      <div className="bg-gray-900/40 border border-gray-800/80 rounded-2xl p-6 h-full flex items-center justify-center">
-        <p className="text-gray-500 font-medium">Run analysis to generate splits.</p>
-      </div>
-    );
-  }
-
   // Helper variables for current tab
   const currentDetails = editableDetails[activeTab] || { name: '', description: '' };
   const currentRec = recommendations.find(r => r.cluster_id === activeTab);
@@ -182,6 +203,14 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   const currentClusterTracks = useMemo(() => {
     return djFlowOrder ? harmonicSortTracks(currentClusterTracksRaw) : currentClusterTracksRaw;
   }, [currentClusterTracksRaw, djFlowOrder]);
+
+  if (recommendations.length === 0) {
+    return (
+      <div className="bg-gray-900/40 border border-gray-800/80 rounded-2xl p-6 h-full flex items-center justify-center">
+        <p className="text-gray-500 font-medium">Run analysis to generate splits.</p>
+      </div>
+    );
+  }
 
   // Cluster colors
   const colors = ['border-violet-500 text-violet-400', 'border-emerald-500 text-emerald-400', 'border-blue-500 text-blue-400', 'border-amber-500 text-amber-400', 'border-pink-500 text-pink-400'];
@@ -424,22 +453,37 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
         {/* Tracks List inside cluster */}
         <div className="flex-1 flex flex-col min-h-[160px]">
           <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-2">Tracks in this split</span>
-          <div className="flex-1 overflow-y-auto border border-gray-850/60 bg-gray-950/20 rounded-xl divide-y divide-gray-900/60 pr-1 max-h-[220px]">
-            {currentClusterTracks.map((track) => (
-              <div key={track.id} className="flex items-center space-x-3 p-2.5 hover:bg-gray-950/30 transition-colors">
-                <div className="w-8 h-8 bg-gray-800 rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
-                  {track.album_images && track.album_images.length > 0 ? (
-                    <img src={track.album_images[track.album_images.length - 1].url} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Music className="w-4 h-4 text-gray-650" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h5 className="text-xs font-semibold text-gray-250 truncate">{track.name}</h5>
-                  <p className="text-[10px] text-gray-550 truncate mt-0.5">{track.artists}</p>
-                </div>
-              </div>
-            ))}
+          <div
+            ref={tracksListRef}
+            className="flex-1 overflow-y-auto border border-gray-850/60 bg-gray-950/20 rounded-xl divide-y divide-gray-900/60 pr-1 max-h-[220px]"
+          >
+            {currentClusterTracks.map((track) => {
+              const isSelected = selectedTrack?.id === track.id;
+              return (
+                <button
+                  key={track.id}
+                  data-track-id={track.id}
+                  onClick={() => onSelectTrack?.(track)}
+                  className={`w-full text-left flex items-center space-x-3 p-2.5 transition-all duration-200 cursor-pointer focus:outline-none ${
+                    isSelected
+                      ? 'bg-violet-500/10 border-l-2 border-l-violet-500 text-white'
+                      : 'hover:bg-gray-950/30 border-l-2 border-l-transparent'
+                  }`}
+                >
+                  <div className="w-8 h-8 bg-gray-800 rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {track.album_images && track.album_images.length > 0 ? (
+                      <img src={track.album_images[track.album_images.length - 1].url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <Music className="w-4 h-4 text-gray-650" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h5 className={`text-xs font-semibold truncate ${isSelected ? 'text-violet-300' : 'text-gray-250'}`}>{track.name}</h5>
+                    <p className="text-[10px] text-gray-550 truncate mt-0.5">{track.artists}</p>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 

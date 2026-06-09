@@ -442,6 +442,8 @@ function App() {
                   llm_active={analysisData.llm_active}
                   llm_provider={analysisData.llm_provider}
                   llm_model={analysisData.llm_model}
+                  selectedTrack={selectedTrack}
+                  onSelectTrack={handleSelectTrack}
                 />
               </ErrorBoundary>
             </div>
