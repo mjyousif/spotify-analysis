@@ -111,7 +111,7 @@ def get_playlist_tracks(access_token: str, playlist_id: str) -> List[Dict[str, A
     logger.info(f"Cache miss for playlist {playlist_id} tracks. Fetching from Spotify API...")
     headers = {"Authorization": f"Bearer {access_token}"}
     tracks = []
-    url = f"{SPOTIFY_API_URL}/playlists/{playlist_id}/items?limit=100&fields=items(track(id,name,uri,duration_ms,popularity,album(images,release_date),artists(id,name))),next"
+    url = f"{SPOTIFY_API_URL}/playlists/{playlist_id}/items?limit=100&fields=items(track(id,name,uri,duration_ms,popularity,album(name,images,release_date),artists(id,name))),next"
     
     while url:
         response = make_spotify_request("GET", url, headers=headers)

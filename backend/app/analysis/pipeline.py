@@ -6,6 +6,7 @@ from app.services.reccobeats import get_tracks_audio_features
 from app.analysis.processors.base import BaseAnalysisProcessor
 from app.analysis.processors.clustering import VibeClusteringProcessor
 from app.analysis.processors.llm_recommender import LLMRecommendationProcessor
+from app.analysis.processors.lyric_sentiment import LyricSentimentProcessor
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -97,7 +98,6 @@ class AnalysisPipeline:
                 
         return payload
 
-# Factory method to create a pre-configured pipeline
 def create_default_pipeline() -> AnalysisPipeline:
     pipeline = AnalysisPipeline()
     pipeline.register_processor(VibeClusteringProcessor())

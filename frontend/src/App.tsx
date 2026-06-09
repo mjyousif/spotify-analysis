@@ -11,6 +11,8 @@ import { TasteProfileWidget } from './components/Dashboard/TasteProfileWidget';
 import { DJDeckWidget } from './components/Dashboard/DJDeckWidget';
 import { EraTimelineWidget } from './components/Dashboard/EraTimelineWidget';
 import { ErrorBoundary } from './components/ErrorBoundary';
+
+const LyricSentimentWidget = React.lazy(() => import('./components/Dashboard/LyricSentimentWidget').then(m => ({ default: m.LyricSentimentWidget })));
 import { 
   Music, Sparkles, Layers, Shuffle, ArrowLeft, 
   CheckCircle2, Sliders, ExternalLink, AlertCircle,
@@ -519,9 +521,24 @@ function App() {
           )}
 
           {/* Advanced Analytics Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ErrorBoundary name="Taste Profile">
               <TasteProfileWidget tracks={analysisData.tracks} />
+            </ErrorBoundary>
+
+            <ErrorBoundary name="Lyrics Sentiment">
+              <React.Suspense fallback={
+                <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl p-5 backdrop-blur-md shadow-xl flex flex-col justify-center items-center h-full min-h-[420px] text-center">
+                  <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              }>
+                <LyricSentimentWidget
+                  playlistId={selectedPlaylistId || ''}
+                  tracks={analysisData.tracks}
+                  selectedTrack={selectedTrack}
+                  onSelectTrack={handleSelectTrack}
+                />
+              </React.Suspense>
             </ErrorBoundary>
             
             <ErrorBoundary name="DJ Deck Flow">

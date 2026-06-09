@@ -32,6 +32,7 @@ export interface TrackData {
   y: number;
   popularity: number;
   release_date: string;
+  duration_ms: number;
   features: {
     tempo: number;
     energy: number;
@@ -68,6 +69,28 @@ export interface Recommendation {
   vibe_explanation: string;
 }
 
+export interface TrackLyricAnalysis {
+  lyrics: string;
+  mood: string;
+  sentiment_score: number;
+  key_themes: string[];
+  prominent_words: string[];
+  summary: string;
+  instrumental: boolean;
+  synced_lyrics: string | null;
+}
+
+export interface PlaylistSentiment {
+  mood_distribution: Record<string, number>;
+  top_words: Array<{ text: string; value: number }>;
+  average_sentiment: number;
+}
+
+export interface LyricsAnalysisData {
+  tracks: Record<string, TrackLyricAnalysis>;
+  playlist_sentiment: PlaylistSentiment;
+}
+
 export interface AnalysisResponse {
   tracks: TrackData[];
   clusters: ClusterProfile[];
@@ -76,6 +99,7 @@ export interface AnalysisResponse {
   llm_provider?: string;
   llm_model?: string;
   recommended_k?: number;
+  lyrics_analysis?: LyricsAnalysisData;
 }
 
 export interface LlmConfigResponse {
@@ -140,6 +164,32 @@ export const apiService = {
 
   async createSplits(splits: Array<{ playlist_name: string; description: string; track_uris: string[] }>): Promise<any> {
     const response = await api.post('/api/playlist/create-split', { splits });
+    return response.data;
+  },
+
+  async getTrackLyrics(
+    trackId: string,
+    trackName: string,
+    artistName: string,
+    albumName: string,
+    durationMs: number,
+    valence: number,
+    energy: number
+  ): Promise<TrackLyricAnalysis> {
+    const params = {
+      track_name: trackName,
+      artist_name: artistName,
+      album_name: albumName,
+      duration_ms: durationMs,
+      valence,
+      energy
+    };
+    const response = await api.get<TrackLyricAnalysis>(`/api/analysis/track/${trackId}/lyrics`, { params });
+    return response.data;
+  },
+
+  async getPlaylistLyricsAnalysis(playlistId: string): Promise<LyricsAnalysisData> {
+    const response = await api.get<LyricsAnalysisData>(`/api/analysis/playlist/${playlistId}/lyrics`);
     return response.data;
   }
 };

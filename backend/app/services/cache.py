@@ -55,6 +55,24 @@ class SQLiteCache:
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                # Table for track lyrics
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS track_lyrics (
+                        id TEXT PRIMARY KEY,
+                        lyrics TEXT,
+                        instrumental INTEGER,
+                        synced_lyrics TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                # Table for track lyric sentiment analysis
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS track_lyric_analysis (
+                        id TEXT PRIMARY KEY,
+                        analysis TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 conn.commit()
             logger.info(f"SQLite cache initialized at {self.db_path}")
         except Exception as e:
@@ -202,6 +220,67 @@ class SQLiteCache:
                 conn.commit()
         except Exception as e:
             logger.error(f"Error writing LLM recommendations to cache: {str(e)}")
+
+    # -------------------------------------------------------------
+    # Track Lyrics (LRCLib)
+    # -------------------------------------------------------------
+    def get_track_lyrics(self, track_id: str) -> Optional[Dict[str, Any]]:
+        query = "SELECT lyrics, instrumental, synced_lyrics FROM track_lyrics WHERE id = ?"
+        try:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, (track_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        "lyrics": row[0],
+                        "instrumental": bool(row[1]),
+                        "synced_lyrics": row[2]
+                    }
+        except Exception as e:
+            logger.error(f"Error reading track lyrics from cache: {str(e)}")
+        return None
+
+    def set_track_lyrics(self, track_id: str, lyrics: str, instrumental: bool, synced_lyrics: Optional[str] = None) -> None:
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO track_lyrics (id, lyrics, instrumental, synced_lyrics, updated_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    (track_id, lyrics, 1 if instrumental else 0, synced_lyrics)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error writing track lyrics to cache: {str(e)}")
+
+    # -------------------------------------------------------------
+    # Track Lyric Sentiment / Analysis
+    # -------------------------------------------------------------
+    def get_track_lyric_analysis(self, track_id: str) -> Optional[Dict[str, Any]]:
+        query = "SELECT analysis FROM track_lyric_analysis WHERE id = ?"
+        try:
+            with self._get_conn() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, (track_id,))
+                row = cursor.fetchone()
+                if row:
+                    try:
+                        return json.loads(row[0])
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Error reading track lyric analysis from cache: {str(e)}")
+        return None
+
+    def set_track_lyric_analysis(self, track_id: str, analysis: Dict[str, Any]) -> None:
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO track_lyric_analysis (id, analysis, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                    (track_id, json.dumps(analysis))
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error writing track lyric analysis to cache: {str(e)}")
 
 # Global instance of cache
 cache = SQLiteCache()

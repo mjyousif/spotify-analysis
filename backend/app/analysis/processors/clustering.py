@@ -164,6 +164,7 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 "y": float(y_coords[idx]),
                 "popularity": popularity,
                 "release_date": release_date,
+                "duration_ms": safe_int(row.get("duration_ms"), 0),
                 "features": {
                     "tempo": safe_float(track_features.get("tempo"), 120.0),
                     "energy": safe_float(track_features.get("energy"), 0.5),
