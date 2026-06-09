@@ -46,6 +46,12 @@ export interface TrackData {
     key: number;
   };
   genres: string[];
+  coords?: {
+    pca: { x: number; y: number };
+    tsne: { x: number; y: number };
+    umap: { x: number; y: number };
+    circumplex: { x: number; y: number };
+  };
 }
 
 export interface ClusterProfile {

@@ -20,6 +20,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
   selectedTrack,
   onSelectTrack
 }) => {
+  const [projectionMode, setProjectionMode] = React.useState<'pca' | 'tsne' | 'umap' | 'circumplex'>('pca');
   const plotRef = useRef<HTMLDivElement>(null);
   const isPlotInitialized = useRef(false);
 
@@ -49,8 +50,8 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
       const color = isOutlier ? '#6b7280' : colors[idx % colors.length];
 
       return {
-        x: clusterTracks.map(t => t.x),
-        y: clusterTracks.map(t => t.y),
+        x: clusterTracks.map(t => t.coords?.[projectionMode]?.x ?? t.x),
+        y: clusterTracks.map(t => t.coords?.[projectionMode]?.y ?? t.y),
         text: clusterTracks.map(t => `<b>${t.name}</b><br>${t.artists}`),
         customdata: clusterTracks.map(t => t.id),
         mode: 'markers' as const,
@@ -65,14 +66,14 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
         }
       };
     });
-  }, [tracks, clusters, recommendations]);
+  }, [tracks, clusters, recommendations, projectionMode]);
 
   // Build a highlight trace for the selected point
   const selectedTrace = useMemo(() => {
     if (!selectedTrack) return null;
     return {
-      x: [selectedTrack.x],
-      y: [selectedTrack.y],
+      x: [selectedTrack.coords?.[projectionMode]?.x ?? selectedTrack.x],
+      y: [selectedTrack.coords?.[projectionMode]?.y ?? selectedTrack.y],
       text: [`<b>${selectedTrack.name}</b><br>${selectedTrack.artists}`],
       mode: 'markers' as const,
       type: 'scatter' as const,
@@ -87,7 +88,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
         line: { width: 2.5, color: '#ffffff' }
       }
     };
-  }, [selectedTrack]);
+  }, [selectedTrack, projectionMode]);
 
   const layout = useMemo(() => ({
     autosize: true,
@@ -199,12 +200,40 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
     Plotly.react(el, allTraces, layout, config);
   }, [selectedTrace, plotTraces, layout, config]);
 
+  const getDescription = (mode: 'pca' | 'tsne' | 'umap' | 'circumplex') => {
+    switch (mode) {
+      case 'pca':
+        return 'PCA reduction of track acoustics. Preserves global feature structure.';
+      case 'tsne':
+        return 't-SNE projection of track acoustics. Groups similar tracks into tight clusters.';
+      case 'umap':
+        return 'UMAP projection of track acoustics. Balances local and global structural similarity.';
+      case 'circumplex':
+        return 'Russell Circumplex mapping (Valence vs. Energy). Natural emotional coordinate representation.';
+      default:
+        return 'Dimensionality reduction of track acoustics.';
+    }
+  };
+
   return (
     <div className="bg-gray-900/40 border border-gray-800/80 rounded-2xl p-6 flex flex-col h-full shadow-lg backdrop-blur-md">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="text-lg font-bold text-white tracking-tight">Vibe Similarity Map</h3>
-          <p className="text-xs text-gray-500">PCA reduction of track acoustics. Similar tracks gather close together.</p>
+          <p className="text-xs text-gray-500">{getDescription(projectionMode)}</p>
+        </div>
+        <div className="flex items-center space-x-1.5 self-start sm:self-center">
+          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Map:</span>
+          <select
+            value={projectionMode}
+            onChange={(e) => setProjectionMode(e.target.value as any)}
+            className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors"
+          >
+            <option value="pca">PCA</option>
+            <option value="tsne">t-SNE</option>
+            <option value="umap">UMAP</option>
+            <option value="circumplex">Emotion (Circumplex)</option>
+          </select>
         </div>
       </div>
 

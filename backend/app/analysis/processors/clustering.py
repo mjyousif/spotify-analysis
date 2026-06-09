@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
-from app.analysis.processors.vibe_splitters import get_vibe_splitter
+from app.analysis.processors.vibe_splitters import get_vibe_splitter, compute_all_coords
 
 def safe_float(val: Any, default: float) -> float:
     if val is None or pd.isna(val):
@@ -124,6 +124,9 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         context["k"] = len(active_vibes)
         context["cluster_labels"] = cluster_labels
         context["llm_recommendations"] = recommendations
+        
+        # 5. Compute all dimensionality reduction coordinates for instant client-side toggles
+        all_coords = compute_all_coords(X_scaled, features_df, tracks_df, feature_cols)
             
         # 6. Merge results and format track list
         processed_tracks = []
@@ -162,6 +165,12 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 "cluster": int(cluster_labels[idx]),
                 "x": float(x_coords[idx]),
                 "y": float(y_coords[idx]),
+                "coords": {
+                    "pca": {"x": float(all_coords["pca"][0][idx]), "y": float(all_coords["pca"][1][idx])},
+                    "tsne": {"x": float(all_coords["tsne"][0][idx]), "y": float(all_coords["tsne"][1][idx])},
+                    "umap": {"x": float(all_coords["umap"][0][idx]), "y": float(all_coords["umap"][1][idx])},
+                    "circumplex": {"x": float(all_coords["circumplex"][0][idx]), "y": float(all_coords["circumplex"][1][idx])}
+                },
                 "popularity": popularity,
                 "release_date": release_date,
                 "duration_ms": safe_int(row.get("duration_ms"), 0),
