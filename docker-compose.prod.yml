@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ghcr.io/mjyousif/spotify-backend:latest
+    container_name: spotify-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Spotify Credentials
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      # Make sure the redirect URI matches what you enter in Spotify Developer Dashboard
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://localhost:8080/callback}
+      
+      # Optional APIs & Keys
+      - RECCOBEATS_API_KEY=${RECCOBEATS_API_KEY}
+      
+      # LLM Configurations
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      
+      # Internal cache db path (matches the volume mount)
+      - CACHE_DB_PATH=/app/data/cache.db
+      # Optional: CORS allowed origins (if frontend runs on a separate port/domain without proxy)
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+    volumes:
+      - spotify_cache_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  frontend:
+    image: ghcr.io/mjyousif/spotify-frontend:latest
+    container_name: spotify-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  spotify_cache_data:

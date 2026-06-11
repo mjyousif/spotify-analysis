@@ -1,6 +1,6 @@
 // Spotify Backend-Driven OAuth Helper Services
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export interface AuthSession {
   accessToken: string;

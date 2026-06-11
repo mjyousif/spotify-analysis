@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("uvicorn.error")
 
-DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "cache.db"))
+DB_PATH = os.getenv("CACHE_DB_PATH", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "cache.db")))
 
 class SQLiteCache:
     def __init__(self, db_path: str = DB_PATH):
