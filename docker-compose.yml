@@ -7,14 +7,12 @@ services:
       dockerfile: Dockerfile
     container_name: spotify-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
       # Spotify Credentials
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
       # Make sure the redirect URI matches what you enter in Spotify Developer Dashboard
-      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://localhost:8080/callback}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI:-http://localhost:9998/callback}
       
       # Optional APIs & Keys
       - RECCOBEATS_API_KEY=${RECCOBEATS_API_KEY}
@@ -49,7 +47,7 @@ services:
     container_name: spotify-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-9998}:80"
     depends_on:
       backend:
         condition: service_healthy
