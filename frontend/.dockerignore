@@ -4,7 +4,6 @@ dist
 .gitignore
 README.md
 Dockerfile
-nginx.conf
 .env
 .env.local
 .env.*.local
