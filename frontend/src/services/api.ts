@@ -97,6 +97,13 @@ export interface LyricsAnalysisData {
   playlist_sentiment: PlaylistSentiment;
 }
 
+export interface ExcludedTrack {
+  id: string;
+  name: string;
+  artists: string;
+  reason: string;
+}
+
 export interface AnalysisResponse {
   tracks: TrackData[];
   clusters: ClusterProfile[];
@@ -107,6 +114,7 @@ export interface AnalysisResponse {
   recommended_k?: number;
   default_projection?: 'pca' | 'tsne' | 'umap' | 'circumplex';
   lyrics_analysis?: LyricsAnalysisData;
+  excluded_tracks?: ExcludedTrack[];
 }
 
 export interface LlmConfigResponse {

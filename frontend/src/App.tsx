@@ -18,6 +18,7 @@ import { TrackDetailsPlayer } from './components/Dashboard/TrackDetailsPlayer';
 import { ExportSuccessModal } from './components/Dashboard/ExportSuccessModal';
 import { DocumentationModal } from './components/Dashboard/DocumentationModal';
 import { LlmErrorModal } from './components/Dashboard/LlmErrorModal';
+import { ExcludedTracksAlert } from './components/Dashboard/ExcludedTracksAlert';
 
 const LyricSentimentWidget = React.lazy(() =>
   import('./components/Dashboard/LyricSentimentWidget').then(m => ({
@@ -308,6 +309,9 @@ function App() {
         </div>
       ) : analysisData ? (
         <div className="space-y-6">
+          {/* Excluded Tracks Alert */}
+          <ExcludedTracksAlert excludedTracks={analysisData.excluded_tracks} />
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
             {/* Interactive Graph Widget */}
             <div className="lg:col-span-5 flex flex-col">

@@ -67,28 +67,39 @@ class AnalysisPipeline:
             logger.error(f"Failed to fetch audio features: {str(e)}")
             features_map = {}
             
-        # 3. Build tracks metadata DataFrame
-        tracks_df = pd.DataFrame(tracks)
-        
-        # 4. Build features DataFrame
+        # 3. Build features list and filter out tracks without features
         features_list = []
-        for tid in track_ids:
-            # If feature is missing, construct a default/mock one
-            feat = features_map.get(tid, {
-                "id": tid,
-                "tempo": 120.0,
-                "energy": 0.5,
-                "valence": 0.5,
-                "acousticness": 0.5,
-                "danceability": 0.5,
-                "instrumentalness": 0.0,
-                "speechiness": 0.05,
-                "liveness": 0.1,
-                "mode": 1,
-                "key": 0
-            })
-            features_list.append(feat)
+        valid_track_ids = []
+        excluded_tracks = []
+        
+        for t in tracks:
+            tid = t.get("id")
+            if not tid:
+                continue
+            if tid in features_map:
+                features_list.append(features_map[tid])
+                valid_track_ids.append(tid)
+            else:
+                excluded_tracks.append({
+                    "id": tid,
+                    "name": t.get("name"),
+                    "artists": ", ".join([a.get("name", "") for a in t.get("artists", [])]) if isinstance(t.get("artists"), list) else "",
+                    "reason": "Acoustic audio features could not be retrieved from ReccoBeats"
+                })
+                logger.warning(f"Excluding track '{t.get('name')}' ({tid}) - audio features missing from ReccoBeats.")
+                
+        # Re-build tracks list and tracks_df for remaining valid tracks
+        valid_tracks = [t for t in tracks if t.get("id") in valid_track_ids]
+        if not valid_tracks:
+            return {
+                "tracks": [],
+                "clusters": [],
+                "recommendations": [],
+                "excluded_tracks": excluded_tracks,
+                "message": "All tracks in the playlist were excluded because their audio features could not be retrieved."
+            }
             
+        tracks_df = pd.DataFrame(valid_tracks)
         features_df = pd.DataFrame(features_list)
         features_df.set_index("id", inplace=True)
         
@@ -105,7 +116,7 @@ class AnalysisPipeline:
         }
         
         # 6. Run all registered processors
-        payload = {}
+        payload = {"excluded_tracks": excluded_tracks}
         for processor in self.processors:
             try:
                 result = processor.process(tracks_df, features_df, context)

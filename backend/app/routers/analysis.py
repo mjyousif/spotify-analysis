@@ -262,25 +262,31 @@ def analyze_playlist_lyrics(
             logger.error(f"Failed to fetch artist genres: {str(e)}")
             genres_map = {}
 
-        tracks_df = pd.DataFrame(tracks)
-        
-        # Build features list
+        # Build features list and exclude tracks without features
         features_list = []
-        for tid in track_ids:
-            feat = features_map.get(tid, {
-                "id": tid,
-                "tempo": 120.0,
-                "energy": 0.5,
-                "valence": 0.5,
-                "acousticness": 0.5,
-                "danceability": 0.5,
-                "instrumentalness": 0.0,
-                "speechiness": 0.05,
-                "liveness": 0.1,
-                "mode": 1,
-                "key": 0
-            })
-            features_list.append(feat)
+        valid_track_ids = []
+        for track in tracks:
+            tid = track.get("id")
+            if not tid:
+                continue
+            if tid in features_map:
+                features_list.append(features_map[tid])
+                valid_track_ids.append(tid)
+            else:
+                logger.warning(f"Excluding track '{track.get('name')}' ({tid}) from lyrics analysis - audio features missing from ReccoBeats.")
+        
+        valid_tracks = [t for t in tracks if t.get("id") in valid_track_ids]
+        if not valid_tracks:
+            return {
+                "tracks": {},
+                "playlist_sentiment": {
+                    "mood_distribution": {},
+                    "top_words": [],
+                    "average_sentiment": 0.0
+                }
+            }
+            
+        tracks_df = pd.DataFrame(valid_tracks)
         features_df = pd.DataFrame(features_list)
         features_df.set_index("id", inplace=True)
 
