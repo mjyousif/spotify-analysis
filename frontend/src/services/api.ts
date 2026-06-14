@@ -202,7 +202,8 @@ export const apiService = {
     genreWeight?: number,
     eraWeight?: number,
     popularityWeight?: number,
-    lyricsWeight?: number
+    lyricsWeight?: number,
+    includeLlm?: boolean
   ): Promise<AnalysisResponse> {
     const params: Record<string, any> = {};
     if (k !== undefined) params.k = k;
@@ -211,9 +212,41 @@ export const apiService = {
     if (eraWeight !== undefined) params.era_weight = eraWeight;
     if (popularityWeight !== undefined) params.popularity_weight = popularityWeight;
     if (lyricsWeight !== undefined) params.lyrics_weight = lyricsWeight;
+    if (includeLlm !== undefined) params.include_llm = includeLlm;
     const response = await api.get<AnalysisResponse>(`/api/analysis/playlist/${playlistId}`, { params });
     return response.data;
   },
+
+  async getRecommendations(
+    playlistId: string, 
+    k?: number, 
+    algorithm?: string,
+    genreWeight?: number,
+    eraWeight?: number,
+    popularityWeight?: number,
+    lyricsWeight?: number
+  ): Promise<{
+    recommendations: Recommendation[];
+    llm_active?: boolean;
+    llm_provider?: string;
+    llm_model?: string;
+  }> {
+    const params: Record<string, any> = {};
+    if (k !== undefined) params.k = k;
+    if (algorithm !== undefined) params.algorithm = algorithm;
+    if (genreWeight !== undefined) params.genre_weight = genreWeight;
+    if (eraWeight !== undefined) params.era_weight = eraWeight;
+    if (popularityWeight !== undefined) params.popularity_weight = popularityWeight;
+    if (lyricsWeight !== undefined) params.lyrics_weight = lyricsWeight;
+    const response = await api.get<{
+      recommendations: Recommendation[];
+      llm_active?: boolean;
+      llm_provider?: string;
+      llm_model?: string;
+    }>(`/api/analysis/playlist/${playlistId}/recommendations`, { params });
+    return response.data;
+  },
+
 
   async createSplits(splits: Array<{ playlist_name: string; description: string; track_uris: string[] }>): Promise<any> {
     const response = await api.post('/api/playlist/create-split', { splits });

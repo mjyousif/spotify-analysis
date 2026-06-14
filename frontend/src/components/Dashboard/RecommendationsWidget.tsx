@@ -16,6 +16,7 @@ interface RecommendationsWidgetProps {
   llm_model?: string;
   selectedTrack?: TrackData | null;
   onSelectTrack?: (track: TrackData) => void;
+  loading?: boolean;
 }
 
 export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
@@ -27,7 +28,8 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   llm_provider,
   llm_model,
   selectedTrack,
-  onSelectTrack
+  onSelectTrack,
+  loading = false
 }) => {
   const [activeTab, setActiveTab] = useState<number>(0);
   const [guideTab, setGuideTab] = useState<'cloud' | 'lmstudio' | 'ollama'>('cloud');
@@ -133,18 +135,31 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
   // Sync recommendations to editable details when they load/change
   useEffect(() => {
     const details: Record<number, { name: string; description: string }> = {};
-    recommendations.forEach(rec => {
-      details[rec.cluster_id] = {
-        name: rec.playlist_name,
-        description: rec.description
-      };
-    });
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (recommendations.length > 0) {
+      recommendations.forEach(rec => {
+        details[rec.cluster_id] = {
+          name: rec.playlist_name,
+          description: rec.description
+        };
+      });
+    } else {
+      clusters.forEach(c => {
+        details[c.cluster_id] = {
+          name: c.cluster_id === -1 ? 'The Eclectic Wildcards' : `Vibe Split ${c.cluster_id + 1}`,
+          description: c.cluster_id === -1
+            ? "A collection of unique tracks that stand out from the playlist's main vibes."
+            : `A curated collection of tracks matching Vibe Split ${c.cluster_id + 1}.`
+        };
+      });
+    }
     setEditableDetails(details);
+    
     if (recommendations.length > 0) {
       setActiveTab(recommendations[0].cluster_id);
+    } else if (clusters.length > 0) {
+      setActiveTab(clusters[0].cluster_id);
     }
-  }, [recommendations]);
+  }, [recommendations, clusters]);
 
   const handleInputChange = (clusterId: number, field: 'name' | 'description', value: string) => {
     setEditableDetails(prev => ({
@@ -207,13 +222,22 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
     return djFlowOrder ? harmonicSortTracks(currentClusterTracksRaw) : currentClusterTracksRaw;
   }, [currentClusterTracksRaw, djFlowOrder]);
 
-  if (recommendations.length === 0) {
+  if (clusters.length === 0) {
     return (
       <div className="bg-gray-900/40 border border-gray-800/80 rounded-2xl p-6 h-full flex items-center justify-center">
-        <p className="text-gray-550 font-medium">Run analysis to generate splits.</p>
+        <p className="text-gray-555 font-medium">Run analysis to generate splits.</p>
       </div>
     );
   }
+
+  const itemsToRender = recommendations.length > 0 
+    ? recommendations 
+    : clusters.map(c => ({
+        cluster_id: c.cluster_id,
+        playlist_name: c.cluster_id === -1 ? 'Wildcards' : `Vibe Split ${c.cluster_id + 1}`,
+        description: '',
+        vibe_explanation: ''
+      }));
 
   // Cluster colors
   const colors = ['border-violet-500 text-violet-400', 'border-emerald-500 text-emerald-400', 'border-blue-500 text-blue-400', 'border-amber-500 text-amber-400', 'border-pink-500 text-pink-400'];
@@ -233,7 +257,12 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
           </h3>
           <p className="text-xs text-gray-550">Edit titles and export each vibe group as a separate Spotify playlist.</p>
         </div>
-        {llm_active && llm_provider && llm_provider !== 'none' && (
+        {loading ? (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] text-violet-300 font-bold self-start sm:self-center animate-pulse">
+            <Loader2 className="w-3 h-3 text-violet-400 animate-spin" />
+            <span>AI Curating Vibes...</span>
+          </div>
+        ) : llm_active && llm_provider && llm_provider !== 'none' && (
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] text-violet-300 font-bold self-start sm:self-center capitalize">
             <Sparkles className="w-3 h-3 text-violet-400" />
             <span>Active: {llm_provider.replace('_', ' ')} ({llm_model && llm_model.includes('/') ? llm_model.split('/')[1] : llm_model || 'default'})</span>
@@ -281,7 +310,7 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
           ref={tabsRef}
           className="flex border-b border-gray-800/60 overflow-x-auto pb-px gap-2 scrollbar-none"
         >
-          {recommendations.map((rec, idx) => {
+          {itemsToRender.map((rec, idx) => {
             const isActive = activeTab === rec.cluster_id;
             const details = editableDetails[rec.cluster_id] || { name: rec.playlist_name };
             const isOutlier = rec.cluster_id === -1;
@@ -316,22 +345,33 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
               <div className="relative">
                 <input
                   type="text"
-                  value={currentDetails.name}
+                  disabled={loading}
+                  value={loading ? "Generating creative title..." : currentDetails.name}
                   onChange={(e) => handleInputChange(activeTab, 'name', e.target.value)}
-                  className="w-full bg-gray-950/40 border border-gray-850 rounded-xl px-3.5 py-2 text-sm font-semibold text-gray-150 focus:outline-none focus:border-violet-500/80 transition-colors"
+                  className="w-full bg-gray-950/40 border border-gray-850 rounded-xl px-3.5 py-2 text-sm font-semibold text-gray-150 focus:outline-none focus:border-violet-500/80 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 />
-                <Edit2 className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-gray-650" />
+                {loading ? (
+                  <Loader2 className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-violet-400 animate-spin" />
+                ) : (
+                  <Edit2 className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 text-gray-650" />
+                )}
               </div>
             </div>
 
             <div className="space-y-1 text-left">
               <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">Playlist Description</label>
-              <textarea
-                value={currentDetails.description}
-                onChange={(e) => handleInputChange(activeTab, 'description', e.target.value)}
-                rows={3}
-                className="w-full bg-gray-950/40 border border-gray-850 rounded-xl px-3.5 py-2 text-sm text-gray-300 focus:outline-none focus:border-violet-500/80 transition-colors resize-none"
-              />
+              <div className="relative">
+                <textarea
+                  disabled={loading}
+                  value={loading ? "Generating creative description..." : currentDetails.description}
+                  onChange={(e) => handleInputChange(activeTab, 'description', e.target.value)}
+                  rows={3}
+                  className="w-full bg-gray-950/40 border border-gray-850 rounded-xl px-3.5 py-2 text-sm text-gray-300 focus:outline-none focus:border-violet-500/80 transition-colors resize-none disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                {loading && (
+                  <Loader2 className="w-3.5 h-3.5 absolute right-3 bottom-3 text-violet-400 animate-spin" />
+                )}
+              </div>
             </div>
           </div>
 
@@ -339,9 +379,18 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
           <div className="bg-gray-950/30 border border-gray-850/60 rounded-xl p-4 flex flex-col justify-between text-left">
             <div>
               <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Vibe Analysis</span>
-              <p className="text-xs text-gray-400 leading-relaxed font-normal">
-                {currentRec?.vibe_explanation || "Analyzing acoustic similarity..."}
-              </p>
+              {loading ? (
+                <div className="space-y-2 animate-pulse py-2">
+                  <div className="h-3.5 bg-gray-850 rounded-md w-3/4"></div>
+                  <div className="h-3.5 bg-gray-850 rounded-md w-full"></div>
+                  <div className="h-3.5 bg-gray-850 rounded-md w-5/6"></div>
+                  <div className="h-3 bg-gray-850 rounded-md w-1/2 mt-4"></div>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 leading-relaxed font-normal">
+                  {currentRec?.vibe_explanation || "Analyzing acoustic similarity..."}
+                </p>
+              )}
             </div>
             
             <div className="mt-3 flex items-center justify-between text-[10px] text-gray-500 font-semibold border-t border-gray-900 pt-2">
@@ -415,13 +464,18 @@ export const RecommendationsWidget: React.FC<RecommendationsWidgetProps> = ({
           
             <button
               onClick={handleExport}
-              disabled={exporting}
-              className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-emerald-800 disabled:to-teal-800 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all duration-300 disabled:cursor-not-allowed cursor-pointer text-sm font-semibold"
+              disabled={exporting || loading}
+              className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-emerald-800/50 disabled:to-teal-800/50 text-white font-bold px-6 py-3 rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all duration-300 disabled:cursor-not-allowed cursor-pointer text-sm font-semibold disabled:opacity-50"
             >
               {exporting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Creating on Spotify...</span>
+                </>
+              ) : loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Waiting for AI curation...</span>
                 </>
               ) : (
                 <>

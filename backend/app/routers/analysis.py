@@ -10,7 +10,7 @@ from app.services.spotify import (
     get_artists_genres, 
     SpotifyAPIError
 )
-from app.analysis.pipeline import create_default_pipeline
+from app.analysis.pipeline import create_default_pipeline, create_clustering_pipeline
 
 try:
     import litellm
@@ -30,11 +30,12 @@ def analyze_playlist(
     era_weight: float = Query(0.0, description="Weight of release decade/year", ge=0.0, le=5.0),
     popularity_weight: float = Query(0.0, description="Weight of track popularity", ge=0.0, le=5.0),
     lyrics_weight: float = Query(0.0, description="Weight of lyrics sentiment", ge=0.0, le=5.0),
+    include_llm: bool = Query(False, description="Whether to run LLM recommendation processor synchronously"),
     token: str = Depends(get_spotify_token)
 ):
     """
     Fetches tracks in a playlist, retrieves audio features, 
-    and returns cluster groupings, coordinates, and LLM vibe split recommendations.
+    and returns cluster groupings, coordinates, and optional LLM vibe split recommendations.
     """
     try:
         # 1. Fetch tracks in the playlist
@@ -48,7 +49,11 @@ def analyze_playlist(
             }
             
         # 2. Run analysis pipeline
-        pipeline = create_default_pipeline()
+        if include_llm:
+            pipeline = create_default_pipeline()
+        else:
+            pipeline = create_clustering_pipeline()
+
         result = pipeline.run(
             token, 
             tracks, 
@@ -59,6 +64,10 @@ def analyze_playlist(
             popularity_weight=popularity_weight,
             lyrics_weight=lyrics_weight
         )
+
+        if "recommendations" not in result:
+            result["recommendations"] = []
+
         return result
         
     except SpotifyAPIError as e:
@@ -70,6 +79,61 @@ def analyze_playlist(
             status_code=500,
             detail=f"Failed to analyze playlist: {str(e)}"
         )
+
+
+@router.get("/playlist/{playlist_id}/recommendations")
+def get_playlist_recommendations(
+    playlist_id: str,
+    k: int = Query(None, description="Number of clusters/vibe splits to create", ge=1, le=10),
+    algorithm: str = Query("kmeans", description="Clustering algorithm to use"),
+    genre_weight: float = Query(0.0, description="Weight of artist genres", ge=0.0, le=5.0),
+    era_weight: float = Query(0.0, description="Weight of release decade/year", ge=0.0, le=5.0),
+    popularity_weight: float = Query(0.0, description="Weight of track popularity", ge=0.0, le=5.0),
+    lyrics_weight: float = Query(0.0, description="Weight of lyrics sentiment", ge=0.0, le=5.0),
+    token: str = Depends(get_spotify_token)
+):
+    """
+    Runs clustering and then generates LLM recommendations.
+    Uses cached track details and features, so it is fast except for the LLM call itself.
+    """
+    try:
+        # Fetch tracks from Spotify
+        tracks = get_playlist_tracks(token, playlist_id)
+        if not tracks:
+            return {
+                "recommendations": [],
+                "llm_active": False,
+                "llm_provider": "none",
+                "llm_model": "none"
+            }
+            
+        pipeline = create_default_pipeline()
+        result = pipeline.run(
+            token, 
+            tracks, 
+            k, 
+            algorithm,
+            genre_weight=genre_weight,
+            era_weight=era_weight,
+            popularity_weight=popularity_weight,
+            lyrics_weight=lyrics_weight
+        )
+        return {
+            "recommendations": result.get("recommendations", []),
+            "llm_active": result.get("llm_active", False),
+            "llm_provider": result.get("llm_provider", "none"),
+            "llm_model": result.get("llm_model", "none")
+        }
+    except SpotifyAPIError as e:
+        logger.error(f"Spotify API error during recommendations of {playlist_id}: {e.message}")
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception as e:
+        logger.error(f"Error generating recommendations for playlist {playlist_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate recommendations: {str(e)}"
+        )
+
 
 
 @router.get("/track/{track_id}/lyrics")

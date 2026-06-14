@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSpotifyAuth } from './hooks/useSpotifyAuth';
 import { apiService } from './services/api';
 import type { TrackData, AnalysisResponse, DocumentationMetadata } from './services/api';
@@ -48,6 +48,8 @@ function App() {
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState<boolean>(false);
+  const activePlaylistIdRef = useRef<string | null>(null);
 
   // Documentation States
   const [docMetadata, setDocMetadata] = useState<DocumentationMetadata | null>(null);
@@ -113,11 +115,13 @@ function App() {
     customPopularityWeight?: number,
     customLyricsWeight?: number
   ) => {
+    activePlaylistIdRef.current = playlistId;
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
     setAnalysisError(null);
     setExportedPlaylists(null);
     setSelectedTrack(null);
+    setRecommendationsLoading(false);
 
     const algoToUse = customAlgo !== undefined ? customAlgo : algorithm;
     const gWeight = customGenreWeight !== undefined ? customGenreWeight : genreWeight;
@@ -125,9 +129,12 @@ function App() {
     const pWeight = customPopularityWeight !== undefined ? customPopularityWeight : popularityWeight;
     const lWeight = customLyricsWeight !== undefined ? customLyricsWeight : lyricsWeight;
 
-    apiService.analyzePlaylist(playlistId, customK, algoToUse, gWeight, eWeight, pWeight, lWeight)
+    apiService.analyzePlaylist(playlistId, customK, algoToUse, gWeight, eWeight, pWeight, lWeight, false)
       .then(data => {
+        if (activePlaylistIdRef.current !== playlistId) return;
+
         setAnalysisData(data);
+        const resolvedK = customK !== undefined ? customK : (data.recommended_k || kValue);
         if (customK === undefined && data.recommended_k) {
           setKValue(data.recommended_k);
         }
@@ -137,13 +144,45 @@ function App() {
         if (data.tracks.length > 0) {
           setSelectedTrack(data.tracks[0]);
         }
+
+        // If recommendations are already returned (e.g. from LLM Semantic Splitter or cache)
+        if (data.recommendations && data.recommendations.length > 0) {
+          setRecommendationsLoading(false);
+        } else {
+          setRecommendationsLoading(true);
+          apiService.getRecommendations(playlistId, resolvedK, algoToUse, gWeight, eWeight, pWeight, lWeight)
+            .then(recData => {
+              if (activePlaylistIdRef.current !== playlistId) return;
+              setAnalysisData(prev => {
+                if (!prev) return null;
+                return {
+                  ...prev,
+                  recommendations: recData.recommendations,
+                  llm_active: recData.llm_active,
+                  llm_provider: recData.llm_provider,
+                  llm_model: recData.llm_model
+                };
+              });
+            })
+            .catch(err => {
+              console.error("Failed to load recommendations:", err);
+            })
+            .finally(() => {
+              if (activePlaylistIdRef.current === playlistId) {
+                setRecommendationsLoading(false);
+              }
+            });
+        }
       })
       .catch(err => {
+        if (activePlaylistIdRef.current !== playlistId) return;
         console.error(err);
         setAnalysisError(err.response?.data?.detail || err.message || "Failed to analyze playlist.");
       })
       .finally(() => {
-        setAnalysisLoading(false);
+        if (activePlaylistIdRef.current === playlistId) {
+          setAnalysisLoading(false);
+        }
       });
   };
 
@@ -286,6 +325,7 @@ function App() {
                   llm_model={analysisData.llm_model}
                   selectedTrack={selectedTrack}
                   onSelectTrack={handleSelectTrack}
+                  loading={recommendationsLoading}
                 />
               </ErrorBoundary>
             </div>

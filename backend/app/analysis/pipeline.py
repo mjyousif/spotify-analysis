@@ -116,8 +116,14 @@ class AnalysisPipeline:
                 
         return payload
 
+def create_clustering_pipeline() -> AnalysisPipeline:
+    pipeline = AnalysisPipeline()
+    pipeline.register_processor(VibeClusteringProcessor())
+    return pipeline
+
 def create_default_pipeline() -> AnalysisPipeline:
     pipeline = AnalysisPipeline()
     pipeline.register_processor(VibeClusteringProcessor())
     pipeline.register_processor(LLMRecommendationProcessor())
     return pipeline
+
