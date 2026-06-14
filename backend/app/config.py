@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     
     # Selected LLM provider: "openai", "gemini", "anthropic", "lm_studio", "ollama"
     llm_provider: str = ""
+    # Default lyrics analysis strategy: "spotify_model" or "emotional_profile_6d"
+    lyrics_strategy: str = "spotify_model"
     # Optional model name override
     llm_model: str = ""
     # Base URLs for local LLMs

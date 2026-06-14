@@ -278,7 +278,10 @@ class LlmSemanticSplitter(BaseVibeSplitter):
                     track_genres.extend(genres_dict[aid])
             track_genres = list(set(track_genres))
             
-            track_features = features_df.loc[track_id] if track_id in features_df.index else {}
+            # Use iloc[idx] — features_df is indexed by ReccoBeats IDs, not Spotify IDs,
+            # so .loc[track_id] always silently returns {}. Positional access is reliable.
+            track_features = features_df.iloc[idx] if idx < len(features_df) else {}
+
             
             # Use short index string (0, 1, 2...) as ID to save context/output token budget
             prompt_tracks.append({

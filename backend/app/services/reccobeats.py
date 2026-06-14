@@ -1,6 +1,5 @@
 import requests
 import logging
-import random
 from typing import List, Dict, Any
 from app.config import settings
 from app.services.cache import cache

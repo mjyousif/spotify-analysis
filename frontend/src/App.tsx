@@ -68,6 +68,7 @@ function App() {
   const [eraWeight, setEraWeight] = useState<number>(0.0);
   const [popularityWeight, setPopularityWeight] = useState<number>(0.0);
   const [lyricsWeight, setLyricsWeight] = useState<number>(0.0);
+  const [lyricsStrategy, setLyricsStrategy] = useState<string>('spotify_model');
 
   // Selection State
   const [selectedTrack, setSelectedTrack] = useState<TrackData | null>(null);
@@ -116,7 +117,8 @@ function App() {
     customGenreWeight?: number,
     customEraWeight?: number,
     customPopularityWeight?: number,
-    customLyricsWeight?: number
+    customLyricsWeight?: number,
+    customLyricsStrategy?: string
   ) => {
     let isSwitching = false;
     activePlaylistIdRef.current = playlistId;
@@ -132,8 +134,9 @@ function App() {
     const eWeight = customEraWeight !== undefined ? customEraWeight : eraWeight;
     const pWeight = customPopularityWeight !== undefined ? customPopularityWeight : popularityWeight;
     const lWeight = customLyricsWeight !== undefined ? customLyricsWeight : lyricsWeight;
+    const lStrategy = customLyricsStrategy !== undefined ? customLyricsStrategy : lyricsStrategy;
 
-    apiService.analyzePlaylist(playlistId, customK, algoToUse, gWeight, eWeight, pWeight, lWeight, false)
+    apiService.analyzePlaylist(playlistId, customK, algoToUse, gWeight, eWeight, pWeight, lWeight, false, lStrategy)
       .then(data => {
         if (activePlaylistIdRef.current !== playlistId) return;
 
@@ -154,7 +157,7 @@ function App() {
           setRecommendationsLoading(false);
         } else {
           setRecommendationsLoading(true);
-          apiService.getRecommendations(playlistId, resolvedK, algoToUse, gWeight, eWeight, pWeight, lWeight)
+          apiService.getRecommendations(playlistId, resolvedK, algoToUse, gWeight, eWeight, pWeight, lWeight, lStrategy)
             .then(recData => {
               if (activePlaylistIdRef.current !== playlistId) return;
               setAnalysisData(prev => {
@@ -275,8 +278,14 @@ function App() {
             setPopularityWeight={setPopularityWeight}
             lyricsWeight={lyricsWeight}
             setLyricsWeight={setLyricsWeight}
+            lyricsStrategy={lyricsStrategy}
+            setLyricsStrategy={setLyricsStrategy}
             recommendedK={analysisData.recommended_k}
-            onUpdateMap={(k, algo, gw, ew, pw, lw) => handleRunAnalysis(selectedPlaylistId, k, algo, gw, ew, pw, lw)}
+            onUpdateMap={(k, algo, gw, ew, pw, lw, lStrat) => {
+              const strat = lStrat !== undefined ? lStrat : lyricsStrategy;
+              if (lStrat !== undefined) setLyricsStrategy(lStrat);
+              handleRunAnalysis(selectedPlaylistId, k, algo, gw, ew, pw, lw, strat);
+            }}
             loading={analysisLoading}
             onOpenDocs={handleOpenDocs}
           />
@@ -376,6 +385,7 @@ function App() {
                   tracks={analysisData.tracks}
                   selectedTrack={selectedTrack}
                   onSelectTrack={handleSelectTrack}
+                  lyricsStrategy={lyricsStrategy}
                 />
               </React.Suspense>
             </ErrorBoundary>

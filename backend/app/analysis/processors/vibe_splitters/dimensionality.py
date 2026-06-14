@@ -23,7 +23,9 @@ def compute_all_coords(
     X_scaled: np.ndarray,
     features_df: pd.DataFrame,
     tracks_df: pd.DataFrame,
-    feature_cols: List[str]
+    feature_cols: List[str],
+    lyrics_strategy: str = "spotify_model",
+    lyrics_weight: float = 0.0
 ) -> Dict[str, Tuple[List[float], List[float], List[float]]]:
     num_tracks = X_scaled.shape[0]
     
@@ -42,13 +44,47 @@ def compute_all_coords(
     valence_list = []
     energy_list = []
     danceability_list = []
-    for _, row in tracks_df.iterrows():
+    
+    # Pre-compute column indices into X_scaled (already MinMaxScaler normalized to [0,1])
+    # This is more reliable than looking up features_df by track_id, which can fail when
+    # features_df is indexed by ReccoBeats IDs rather than Spotify IDs.
+    val_idx   = feature_cols.index("valence")      if "valence"      in feature_cols else None
+    eng_idx   = feature_cols.index("energy")       if "energy"       in feature_cols else None
+    dance_idx = feature_cols.index("danceability") if "danceability" in feature_cols else None
+
+    # Blend lyrics valence/energy if lyrics_weight > 0
+    blend_lyrics = (lyrics_weight > 0.0)
+    from app.services.cache import cache
+    from app.analysis.processors.lyric_strategies import get_lyric_strategy
+    
+    strategy = get_lyric_strategy(lyrics_strategy)
+    
+    for pos, (_, row) in enumerate(tracks_df.iterrows()):
         track_id = row["id"]
-        track_features = features_df.loc[track_id] if track_id in features_df.index else {}
-        valence_list.append(float(safe_float(track_features.get("valence"), 0.5)))
-        energy_list.append(float(safe_float(track_features.get("energy"), 0.5)))
-        danceability_list.append(float(safe_float(track_features.get("danceability"), 0.5)))
+
+        # Read normalized audio features directly from X_scaled by position
+        audio_val   = float(X_scaled[pos, val_idx])   if val_idx   is not None else 0.5
+        audio_eng   = float(X_scaled[pos, eng_idx])   if eng_idx   is not None else 0.5
+        dance       = float(X_scaled[pos, dance_idx]) if dance_idx is not None else 0.5
+        
+        if blend_lyrics:
+            try:
+                cache_key = f"{track_id}:{lyrics_strategy}"
+                analysis = cache.get_track_lyric_analysis(cache_key)
+                if analysis:
+                    lyrical_val, lyrical_eng = strategy.get_lyrical_valence_and_energy(analysis, audio_val, audio_eng)
+                    
+                    audio_val = (audio_val + lyrics_weight * lyrical_val) / (1.0 + lyrics_weight)
+                    audio_eng = (audio_eng + lyrics_weight * lyrical_eng) / (1.0 + lyrics_weight)
+            except Exception as e:
+                logger.error(f"Error fetching cache in compute_all_coords: {str(e)}")
+                
+        valence_list.append(audio_val)
+        energy_list.append(audio_eng)
+        danceability_list.append(dance)
+        
     res["circumplex"] = (valence_list, energy_list, danceability_list)
+
 
     if num_tracks < 2:
         res["pca"] = (valence_list, energy_list, danceability_list)

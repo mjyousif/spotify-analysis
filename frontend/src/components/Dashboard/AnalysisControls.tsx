@@ -14,6 +14,8 @@ interface AnalysisControlsProps {
   setPopularityWeight: (w: number) => void;
   lyricsWeight: number;
   setLyricsWeight: (w: number) => void;
+  lyricsStrategy: string;
+  setLyricsStrategy: (strategy: string) => void;
   recommendedK?: number | null;
   onUpdateMap: (
     customK?: number, 
@@ -21,7 +23,8 @@ interface AnalysisControlsProps {
     genreWeight?: number,
     eraWeight?: number,
     popularityWeight?: number,
-    lyricsWeight?: number
+    lyricsWeight?: number,
+    lyricsStrategy?: string
   ) => void;
   loading: boolean;
   onOpenDocs?: (tab: 'algorithms' | 'projections', key?: string) => void;
@@ -42,6 +45,8 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
   setPopularityWeight,
   lyricsWeight,
   setLyricsWeight,
+  lyricsStrategy,
+  setLyricsStrategy,
   recommendedK,
   onUpdateMap,
   loading,
@@ -91,7 +96,7 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
   };
 
   const triggerUpdate = () => {
-    onUpdateMap(kValue, algorithm, genreWeight, eraWeight, popularityWeight, lyricsWeight);
+    onUpdateMap(kValue, algorithm, genreWeight, eraWeight, popularityWeight, lyricsWeight, lyricsStrategy);
   };
 
   return (
@@ -106,7 +111,7 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
             onChange={(e) => {
               const val = e.target.value as 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic';
               setAlgorithm(val);
-              onUpdateMap(kValue, val, genreWeight, eraWeight, popularityWeight, lyricsWeight);
+              onUpdateMap(kValue, val, genreWeight, eraWeight, popularityWeight, lyricsWeight, lyricsStrategy);
             }}
             className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1.5 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors"
           >
@@ -208,6 +213,28 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
               <option value="genre">Genre-Focused</option>
               <option value="lyrics">Lyric/Sentiment Focus</option>
               <option value="custom" disabled>Custom (Modified Sliders)</option>
+            </select>
+          </div>
+
+          {/* Lyrical Model Selector */}
+          <div className="flex items-center space-x-3 bg-gray-950/45 p-2.5 rounded-xl border border-gray-850/50 -mt-1">
+            <span className="text-xs font-bold text-gray-300">Lyrical Model:</span>
+            {lyricsWeight === 0 && (
+              <span className="text-[10px] text-gray-500 italic">
+                (Increase Lyrics Influence to apply)
+              </span>
+            )}
+            <select
+              value={lyricsStrategy}
+              onChange={(e) => {
+                const val = e.target.value;
+                setLyricsStrategy(val);
+                onUpdateMap(kValue, algorithm, genreWeight, eraWeight, popularityWeight, lyricsWeight, val);
+              }}
+              className="bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors ml-auto cursor-pointer"
+            >
+              <option value="spotify_model">Spotify Valence/Energy Model (3D)</option>
+              <option value="emotional_profile_6d">6D Emotion Profile Model (7D)</option>
             </select>
           </div>
 

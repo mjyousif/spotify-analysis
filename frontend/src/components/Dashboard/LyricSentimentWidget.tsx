@@ -12,13 +12,15 @@ interface LyricSentimentWidgetProps {
   tracks: TrackData[];
   selectedTrack: TrackData | null;
   onSelectTrack: (track: TrackData) => void;
+  lyricsStrategy: string;
 }
 
 export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
   playlistId,
   tracks,
   selectedTrack,
-  onSelectTrack
+  onSelectTrack,
+  lyricsStrategy
 }) => {
   const [activeTab, setActiveTab] = useState<'playlist' | 'track'>('playlist');
   const [localSelectedTrackId, setLocalSelectedTrackId] = useState<string>('');
@@ -66,7 +68,8 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
       '', // album name is resolved backend-side
       track.duration_ms || 0,
       track.features.valence,
-      track.features.energy
+      track.features.energy,
+      lyricsStrategy
     )
       .then((data) => {
         setLoadedTracks(prev => ({
@@ -90,7 +93,7 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
     setLoadingPlaylist(true);
     setPlaylistError(null);
 
-    apiService.getPlaylistLyricsAnalysis(playlistId)
+    apiService.getPlaylistLyricsAnalysis(playlistId, lyricsStrategy)
       .then((data) => {
         setPlaylistAnalysis(data);
         // Pre-fill local loaded tracks with batch data to save network calls
@@ -270,44 +273,77 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
     'text-amber-400 hover:text-amber-300 hover:scale-105'
   ];
 
-  // Prepare Donut Chart segments if batch analysis exists
-  const segmentsData = useMemo(() => {
-    if (!playlistAnalysis || !playlistAnalysis.playlist_sentiment) return { segments: [], total: 0, average: 0 };
-    const sentiment = playlistAnalysis.playlist_sentiment;
-    const moodDistribution = sentiment.mood_distribution || {};
+  // Calculate playlist wide averages of strategy dimensions
+  const strategyAverages = useMemo(() => {
+    if (!playlistAnalysis || !playlistAnalysis.tracks) return null;
+    const trackList = Object.values(playlistAnalysis.tracks);
+    const count = trackList.length;
+    if (count === 0) return null;
 
-    const donutData = Object.entries(moodDistribution)
-      .filter(([_, count]) => count > 0)
-      .map(([mood, count]) => ({
-        name: mood,
-        count,
-        meta: getMoodMeta(mood)
-      }));
+    if (lyricsStrategy === 'spotify_model') {
+      let sumValence = 0;
+      let sumEnergy = 0;
+      let sumAmbiguity = 0;
+      let validCountValence = 0;
+      let validCountEnergy = 0;
+      let validCountAmbiguity = 0;
 
-    const total = donutData.reduce((acc, d) => acc + d.count, 0);
+      trackList.forEach(t => {
+        if (t.lyrical_valence !== undefined) {
+          sumValence += t.lyrical_valence;
+          validCountValence++;
+        }
+        if (t.lyrical_energy !== undefined) {
+          sumEnergy += t.lyrical_energy;
+          validCountEnergy++;
+        }
+        if (t.emotional_ambiguity !== undefined) {
+          sumAmbiguity += t.emotional_ambiguity;
+          validCountAmbiguity++;
+        }
+      });
 
-    const radius = 36;
-    const circumference = 2 * Math.PI * radius;
-    
-    let accumulatedPercent = 0;
-    const segments = donutData.map((d) => {
-      const fraction = total > 0 ? d.count / total : 0;
-      const strokeDash = fraction * circumference;
-      const strokeOffset = circumference - strokeDash + (accumulatedPercent * circumference);
-      accumulatedPercent += fraction;
       return {
-        ...d,
-        strokeDash,
-        strokeOffset
+        lyrical_valence: validCountValence > 0 ? sumValence / validCountValence : 0.5,
+        lyrical_energy: validCountEnergy > 0 ? sumEnergy / validCountEnergy : 0.5,
+        emotional_ambiguity: validCountAmbiguity > 0 ? sumAmbiguity / validCountAmbiguity : 0.0,
+        average_sentiment: playlistAnalysis.playlist_sentiment?.average_sentiment ?? 0.0,
+        total_songs: count
       };
-    });
+    } else {
+      let sumJoy = 0;
+      let sumSadness = 0;
+      let sumAnger = 0;
+      let sumFear = 0;
+      let sumLove = 0;
+      let sumNostalgia = 0;
+      
+      let valCount = 0;
 
-    return {
-      segments,
-      total,
-      average: sentiment.average_sentiment
-    };
-  }, [playlistAnalysis]);
+      trackList.forEach(t => {
+        if (t.emotions) {
+          sumJoy += t.emotions.joy;
+          sumSadness += t.emotions.sadness;
+          sumAnger += t.emotions.anger;
+          sumFear += t.emotions.fear_anxiety;
+          sumLove += t.emotions.love_romance;
+          sumNostalgia += t.emotions.nostalgia_longing;
+          valCount++;
+        }
+      });
+
+      return {
+        joy: valCount > 0 ? sumJoy / valCount : 0.0,
+        sadness: valCount > 0 ? sumSadness / valCount : 0.0,
+        anger: valCount > 0 ? sumAnger / valCount : 0.0,
+        fear_anxiety: valCount > 0 ? sumFear / valCount : 0.0,
+        love_romance: valCount > 0 ? sumLove / valCount : 0.0,
+        nostalgia_longing: valCount > 0 ? sumNostalgia / valCount : 0.0,
+        average_sentiment: playlistAnalysis.playlist_sentiment?.average_sentiment ?? 0.0,
+        total_songs: count
+      };
+    }
+  }, [playlistAnalysis, lyricsStrategy]);
 
   return (
     <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl p-5 backdrop-blur-md shadow-xl flex flex-col h-full min-h-[420px] text-left select-none">
@@ -359,86 +395,168 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
             </div>
           ) : playlistAnalysis ? (
             <div className="flex flex-col justify-between flex-1 space-y-4 animate-fadeIn">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                
-                {/* SVG Donut Chart */}
-                <div className="flex items-center justify-center relative py-2">
-                  {segmentsData.total > 0 ? (
-                    <>
-                      <svg width="120" height="120" viewBox="0 0 100 100" className="transform -rotate-90">
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="36"
-                          fill="transparent"
-                          stroke="#111827"
-                          strokeWidth="10"
-                        />
-                        {segmentsData.segments.map((seg, idx) => {
-                          let strokeColor = '#6b7280';
-                          const label = seg.name.toLowerCase();
-                          if (label.includes('joy') || label.includes('happy')) strokeColor = '#10b981';
-                          else if (label.includes('roman') || label.includes('love')) strokeColor = '#d946ef';
-                          else if (label.includes('melan') || label.includes('sad')) strokeColor = '#8b5cf6';
-                          else if (label.includes('angr') || label.includes('rage')) strokeColor = '#ef4444';
-                          else if (label.includes('peace') || label.includes('calm')) strokeColor = '#14b8a6';
-                          else if (label.includes('instr')) strokeColor = '#64748b';
+              {strategyAverages ? (
+                <div className="space-y-4 text-left">
+                  {/* Playlist Lyrical Sentiment Banner */}
+                  <div className="flex items-center justify-between bg-violet-950/10 border border-violet-900/10 px-4 py-3 rounded-2xl select-text">
+                    <div>
+                      <span className="text-[9px] text-gray-550 font-black uppercase tracking-wider block">Average Playlist Sentiment</span>
+                      <span className="text-[10px] text-gray-400 font-medium leading-tight">Average sentiment of lyrics across all {strategyAverages.total_songs} tracks.</span>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-xl font-extrabold block ${strategyAverages.average_sentiment >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {strategyAverages.average_sentiment >= 0 ? '+' : ''}
+                        {strategyAverages.average_sentiment.toFixed(2)}
+                      </span>
+                      <span className="text-[8px] text-gray-500 uppercase font-black tracking-wider">
+                        {strategyAverages.average_sentiment >= 0.1 ? 'Joyful Bias' : strategyAverages.average_sentiment <= -0.1 ? 'Heavy Bias' : 'Neutral Vibe'}
+                      </span>
+                    </div>
+                  </div>
 
-                          return (
-                            <circle
-                              key={idx}
-                              cx="50"
-                              cy="50"
-                              r="36"
-                              fill="transparent"
-                              stroke={strokeColor}
-                              strokeWidth="10"
-                              strokeDasharray={`${seg.strokeDash} 226.19`}
-                              strokeDashoffset={seg.strokeOffset}
-                              strokeLinecap="round"
-                              className="transition-all duration-1000 ease-out"
-                            />
-                          );
-                        })}
-                      </svg>
-                      
-                      {/* Inside Text Center */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-[9px] text-gray-550 uppercase font-black tracking-wider">Avg Score</span>
-                        <span className="text-sm font-extrabold text-white">
-                          {segmentsData.average >= 0 ? '+' : ''}
-                          {segmentsData.average.toFixed(2)}
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-xs text-gray-500">No mood data to display</div>
-                  )}
-                </div>
+                  {/* Lyrical Dimension Averages */}
+                  <div className="bg-gray-950/50 border border-gray-850 p-4 rounded-2xl space-y-4">
+                    <span className="text-[9px] text-gray-550 font-bold uppercase tracking-wider block border-b border-gray-850/60 pb-2">
+                      Playlist Lyrical Averages ({lyricsStrategy === 'spotify_model' ? 'Spotify Model' : '6D Emotions'})
+                    </span>
 
-                {/* Legend */}
-                <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
-                  {segmentsData.segments.map((seg, idx) => {
-                    const pct = segmentsData.total > 0 ? Math.round((seg.count / segmentsData.total) * 100) : 0;
-                    return (
-                      <div key={idx} className="flex items-center justify-between text-xs py-0.5">
-                        <div className="flex items-center space-x-2">
-                          <div className={`w-2.5 h-2.5 rounded-full ${
-                            seg.name.includes('joy') ? 'bg-emerald-500' :
-                            seg.name.includes('roman') ? 'bg-fuchsia-500' :
-                            seg.name.includes('melan') ? 'bg-violet-500' :
-                            seg.name.includes('angr') ? 'bg-red-500' :
-                            seg.name.includes('peace') ? 'bg-teal-500' : 'bg-slate-500'
-                          }`}></div>
-                          <span className="font-bold text-gray-300">{seg.meta.label}</span>
+                    {lyricsStrategy === 'spotify_model' ? (
+                      <div className="space-y-3">
+                        {/* Valence */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Lyrical Valence (Happiness)</span>
+                            <span className="text-emerald-450">{((strategyAverages as any).lyrical_valence * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-2 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).lyrical_valence * 100)}%` }}
+                            ></div>
+                          </div>
                         </div>
-                        <span className="text-[10px] text-gray-400 font-semibold">{seg.count} songs ({pct}%)</span>
-                      </div>
-                    );
-                  })}
-                </div>
 
-              </div>
+                        {/* Energy */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Lyrical Energy (Intensity)</span>
+                            <span className="text-fuchsia-450">{((strategyAverages as any).lyrical_energy * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-2 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).lyrical_energy * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Ambiguity */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Emotional Ambiguity (Complexity)</span>
+                            <span className="text-violet-400">{((strategyAverages as any).emotional_ambiguity * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-2 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-gradient-to-r from-gray-700 to-violet-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).emotional_ambiguity * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      // emotional_profile_6d
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                        {/* Joy */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Joy</span>
+                            <span className="text-emerald-400 font-extrabold">{((strategyAverages as any).joy * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-emerald-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).joy * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Sadness */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Sadness</span>
+                            <span className="text-indigo-400 font-extrabold">{((strategyAverages as any).sadness * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-indigo-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).sadness * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Anger */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Anger</span>
+                            <span className="text-red-400 font-extrabold">{((strategyAverages as any).anger * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-red-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).anger * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Fear */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Fear/Anxiety</span>
+                            <span className="text-purple-400 font-extrabold">{((strategyAverages as any).fear_anxiety * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-purple-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).fear_anxiety * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Love */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Love</span>
+                            <span className="text-fuchsia-400 font-extrabold">{((strategyAverages as any).love_romance * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-fuchsia-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).love_romance * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Nostalgia */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+                            <span>Nostalgia</span>
+                            <span className="text-amber-500 font-extrabold">{((strategyAverages as any).nostalgia_longing * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-900 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                            <div 
+                              className="h-full rounded-full bg-amber-500 transition-all duration-700"
+                              style={{ width: `${Math.round((strategyAverages as any).nostalgia_longing * 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500 py-10 text-center select-text">No mood averages to display.</div>
+              )}
 
               {/* Emotional Tag Cloud */}
               <div className="pt-3 border-t border-gray-850/50">
@@ -556,26 +674,140 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
                   )}
                 </div>
 
-                {/* Sentiment Gauge */}
-                <div className="space-y-1 text-left">
-                  <div className="flex items-center justify-between text-[9px] text-gray-550 font-bold uppercase tracking-wider">
-                    <span>Sentiment Balance</span>
-                    <span className={trackAnalysis.sentiment_score >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                      {trackAnalysis.sentiment_score >= 0 ? 'Joyful' : 'Heavy'} ({trackAnalysis.sentiment_score.toFixed(1)})
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-950 h-2.5 rounded-full border border-gray-850 overflow-hidden relative flex items-center">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-700 ${
-                        trackAnalysis.sentiment_score >= 0 
-                          ? 'bg-gradient-to-r from-violet-500 to-emerald-500' 
-                          : 'bg-gradient-to-r from-red-500 to-violet-500'
-                      }`}
-                      style={{ 
-                        width: `${Math.round(((trackAnalysis.sentiment_score + 1) / 2) * 100)}%` 
-                      }}
-                    ></div>
-                  </div>
+                {/* Lyrical Dimensions */}
+                <div className="space-y-2 text-left sm:col-span-1">
+                  {lyricsStrategy === 'spotify_model' ? (
+                    <div className="space-y-2">
+                      {/* Lyrical Valence */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Lyrical Valence (Happiness)</span>
+                          <span className="text-emerald-400">{(trackAnalysis.lyrical_valence ?? 0.5).toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.lyrical_valence ?? 0.5) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Lyrical Energy */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Lyrical Energy (Intensity)</span>
+                          <span className="text-fuchsia-400">{(trackAnalysis.lyrical_energy ?? 0.5).toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.lyrical_energy ?? 0.5) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Emotional Ambiguity */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Emotional Ambiguity</span>
+                          <span className="text-violet-400">{(trackAnalysis.emotional_ambiguity ?? 0.0).toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1.5 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-gradient-to-r from-gray-700 to-violet-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotional_ambiguity ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // emotional_profile_6d
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {/* Joy */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[7.5px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Joy</span>
+                          <span className="text-emerald-400 font-extrabold">{(trackAnalysis.emotions?.joy ?? 0.0).toFixed(1)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-emerald-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotions?.joy ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Sadness */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[7.5px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Sadness</span>
+                          <span className="text-indigo-400 font-extrabold">{(trackAnalysis.emotions?.sadness ?? 0.0).toFixed(1)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-indigo-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotions?.sadness ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Anger */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[7.5px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Anger</span>
+                          <span className="text-red-400 font-extrabold">{(trackAnalysis.emotions?.anger ?? 0.0).toFixed(1)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-red-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotions?.anger ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Fear */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[7.5px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Fear/Anxiety</span>
+                          <span className="text-purple-400 font-extrabold">{(trackAnalysis.emotions?.fear_anxiety ?? 0.0).toFixed(1)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-purple-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotions?.fear_anxiety ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Love */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[7.5px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Love</span>
+                          <span className="text-fuchsia-400 font-extrabold">{(trackAnalysis.emotions?.love_romance ?? 0.0).toFixed(1)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-fuchsia-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotions?.love_romance ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Nostalgia */}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center justify-between text-[7.5px] text-gray-400 font-bold uppercase tracking-wider">
+                          <span>Nostalgia</span>
+                          <span className="text-amber-500 font-extrabold">{(trackAnalysis.emotions?.nostalgia_longing ?? 0.0).toFixed(1)}</span>
+                        </div>
+                        <div className="w-full bg-gray-950 h-1 rounded-full border border-gray-850 overflow-hidden">
+                          <div 
+                            className="h-full rounded-full bg-amber-500 transition-all duration-700"
+                            style={{ width: `${Math.round((trackAnalysis.emotions?.nostalgia_longing ?? 0.0) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>

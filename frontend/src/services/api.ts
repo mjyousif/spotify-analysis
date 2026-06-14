@@ -78,7 +78,18 @@ export interface Recommendation {
 export interface TrackLyricAnalysis {
   lyrics: string;
   mood: string;
-  sentiment_score: number;
+  lyrical_valence?: number;
+  lyrical_energy?: number;
+  emotional_ambiguity?: number;
+  sentiment_score?: number;
+  emotions?: {
+    joy: number;
+    sadness: number;
+    anger: number;
+    fear_anxiety: number;
+    love_romance: number;
+    nostalgia_longing: number;
+  };
   key_themes: string[];
   prominent_words: string[];
   summary: string;
@@ -211,7 +222,8 @@ export const apiService = {
     eraWeight?: number,
     popularityWeight?: number,
     lyricsWeight?: number,
-    includeLlm?: boolean
+    includeLlm?: boolean,
+    lyricsStrategy?: string
   ): Promise<AnalysisResponse> {
     const params: Record<string, any> = {};
     if (k !== undefined) params.k = k;
@@ -220,6 +232,7 @@ export const apiService = {
     if (eraWeight !== undefined) params.era_weight = eraWeight;
     if (popularityWeight !== undefined) params.popularity_weight = popularityWeight;
     if (lyricsWeight !== undefined) params.lyrics_weight = lyricsWeight;
+    if (lyricsStrategy !== undefined) params.lyrics_strategy = lyricsStrategy;
     if (includeLlm !== undefined) params.include_llm = includeLlm;
     const response = await api.get<AnalysisResponse>(`/api/analysis/playlist/${playlistId}`, { params });
     return response.data;
@@ -232,7 +245,8 @@ export const apiService = {
     genreWeight?: number,
     eraWeight?: number,
     popularityWeight?: number,
-    lyricsWeight?: number
+    lyricsWeight?: number,
+    lyricsStrategy?: string
   ): Promise<{
     recommendations: Recommendation[];
     llm_active?: boolean;
@@ -246,6 +260,7 @@ export const apiService = {
     if (eraWeight !== undefined) params.era_weight = eraWeight;
     if (popularityWeight !== undefined) params.popularity_weight = popularityWeight;
     if (lyricsWeight !== undefined) params.lyrics_weight = lyricsWeight;
+    if (lyricsStrategy !== undefined) params.lyrics_strategy = lyricsStrategy;
     const response = await api.get<{
       recommendations: Recommendation[];
       llm_active?: boolean;
@@ -268,9 +283,10 @@ export const apiService = {
     albumName: string,
     durationMs: number,
     valence: number,
-    energy: number
+    energy: number,
+    lyricsStrategy?: string
   ): Promise<TrackLyricAnalysis> {
-    const params = {
+    const params: Record<string, any> = {
       track_name: trackName,
       artist_name: artistName,
       album_name: albumName,
@@ -278,12 +294,15 @@ export const apiService = {
       valence,
       energy
     };
+    if (lyricsStrategy !== undefined) params.lyrics_strategy = lyricsStrategy;
     const response = await api.get<TrackLyricAnalysis>(`/api/analysis/track/${trackId}/lyrics`, { params });
     return response.data;
   },
 
-  async getPlaylistLyricsAnalysis(playlistId: string): Promise<LyricsAnalysisData> {
-    const response = await api.get<LyricsAnalysisData>(`/api/analysis/playlist/${playlistId}/lyrics`);
+  async getPlaylistLyricsAnalysis(playlistId: string, lyricsStrategy?: string): Promise<LyricsAnalysisData> {
+    const params: Record<string, any> = {};
+    if (lyricsStrategy !== undefined) params.lyrics_strategy = lyricsStrategy;
+    const response = await api.get<LyricsAnalysisData>(`/api/analysis/playlist/${playlistId}/lyrics`, { params });
     return response.data;
   }
 };

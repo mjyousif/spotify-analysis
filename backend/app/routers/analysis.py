@@ -31,6 +31,7 @@ def analyze_playlist(
     era_weight: float = Query(0.0, description="Weight of release decade/year", ge=0.0, le=5.0),
     popularity_weight: float = Query(0.0, description="Weight of track popularity", ge=0.0, le=5.0),
     lyrics_weight: float = Query(0.0, description="Weight of lyrics sentiment", ge=0.0, le=5.0),
+    lyrics_strategy: str = Query("spotify_model", description="Lyrical analysis strategy to use"),
     include_llm: bool = Query(False, description="Whether to run LLM recommendation processor synchronously"),
     token: str = Depends(get_spotify_token)
 ):
@@ -63,7 +64,8 @@ def analyze_playlist(
             genre_weight=genre_weight,
             era_weight=era_weight,
             popularity_weight=popularity_weight,
-            lyrics_weight=lyrics_weight
+            lyrics_weight=lyrics_weight,
+            lyrics_strategy=lyrics_strategy
         )
 
         if "recommendations" not in result:
@@ -94,6 +96,7 @@ def get_playlist_recommendations(
     era_weight: float = Query(0.0, description="Weight of release decade/year", ge=0.0, le=5.0),
     popularity_weight: float = Query(0.0, description="Weight of track popularity", ge=0.0, le=5.0),
     lyrics_weight: float = Query(0.0, description="Weight of lyrics sentiment", ge=0.0, le=5.0),
+    lyrics_strategy: str = Query("spotify_model", description="Lyrical analysis strategy to use"),
     token: str = Depends(get_spotify_token)
 ):
     """
@@ -120,7 +123,8 @@ def get_playlist_recommendations(
             genre_weight=genre_weight,
             era_weight=era_weight,
             popularity_weight=popularity_weight,
-            lyrics_weight=lyrics_weight
+            lyrics_weight=lyrics_weight,
+            lyrics_strategy=lyrics_strategy
         )
         return {
             "recommendations": result.get("recommendations", []),
@@ -152,6 +156,7 @@ def analyze_track_lyrics(
     duration_ms: int = Query(0, description="Duration in ms"),
     valence: float = Query(0.5, description="Spotify valence"),
     energy: float = Query(0.5, description="Spotify energy"),
+    lyrics_strategy: str = Query("spotify_model", description="Lyrical analysis strategy to use"),
     token: str = Depends(get_spotify_token)
 ):
     """
@@ -167,7 +172,8 @@ def analyze_track_lyrics(
 
         # 2. Check cache for sentiment analysis
         from app.services.cache import cache
-        analysis_data = cache.get_track_lyric_analysis(track_id)
+        cache_key = f"{track_id}:{lyrics_strategy}"
+        analysis_data = cache.get_track_lyric_analysis(cache_key)
         
         if analysis_data is None:
             # Analyze track
@@ -187,13 +193,28 @@ def analyze_track_lyrics(
             if is_instrumental:
                 analysis_data = {
                     "mood": "instrumental",
-                    "sentiment_score": 0.0,
                     "key_themes": ["instrumental"],
                     "prominent_words": [],
                     "summary": "This track is instrumental, carrying mood through sound and rhythm rather than lyrics."
                 }
+                if lyrics_strategy == "spotify_model":
+                    analysis_data.update({
+                        "lyrical_valence": 0.5,
+                        "lyrical_energy": 0.5,
+                        "emotional_ambiguity": 0.0
+                    })
+                else:
+                    analysis_data.update({
+                        "sentiment_score": 0.0,
+                        "emotions": {
+                            "joy": 0.0, "sadness": 0.0, "anger": 0.0,
+                            "fear_anxiety": 0.0, "love_romance": 0.0, "nostalgia_longing": 0.0
+                        }
+                    })
             elif not lyrics_text.strip():
-                analysis_data = processor._run_heuristic_analysis(track_mock, lyrics_text)
+                from app.analysis.processors.lyric_strategies import get_lyric_strategy
+                strategy = get_lyric_strategy(lyrics_strategy)
+                analysis_data = strategy.run_heuristic_fallback(track_mock, lyrics_text)
             else:
                 # Check if LLM is active
                 from app.analysis.processors.vibe_splitters import resolve_llm_config
@@ -201,14 +222,16 @@ def analyze_track_lyrics(
                 
                 if litellm and has_llm_key:
                     analysis_data = processor._run_llm_analysis(
-                        track_name, artist_name, lyrics_text, actual_model, api_base, api_key
+                        track_name, artist_name, lyrics_text, actual_model, api_base, api_key, lyrics_strategy
                     )
                     
                 if analysis_data is None:
-                    analysis_data = processor._run_heuristic_analysis(track_mock, lyrics_text)
+                    from app.analysis.processors.lyric_strategies import get_lyric_strategy
+                    strategy = get_lyric_strategy(lyrics_strategy)
+                    analysis_data = strategy.run_heuristic_fallback(track_mock, lyrics_text)
                     
                 # Cache it
-                cache.set_track_lyric_analysis(track_id, analysis_data)
+                cache.set_track_lyric_analysis(cache_key, analysis_data)
                 
         analysis_data["lyrics"] = lyrics_text
         analysis_data["instrumental"] = is_instrumental
@@ -223,6 +246,7 @@ def analyze_track_lyrics(
 @router.get("/playlist/{playlist_id}/lyrics")
 def analyze_playlist_lyrics(
     playlist_id: str,
+    lyrics_strategy: str = Query("spotify_model", description="Lyrical analysis strategy to use"),
     token: str = Depends(get_spotify_token)
 ):
     """
@@ -292,11 +316,12 @@ def analyze_playlist_lyrics(
 
         # Pre-process tracks into structure required by LyricSentimentProcessor
         processed_tracks = []
-        for idx, row in tracks_df.iterrows():
+        for pos, (_, row) in enumerate(tracks_df.iterrows()):
             track_id = row["id"]
             artist_list = row.get("artists", [])
             artists_str = ", ".join([a.get("name", "") for a in artist_list])
-            track_features = features_df.loc[track_id].to_dict() if track_id in features_df.index else {}
+            # Use iloc — features_df is indexed by ReccoBeats IDs, not Spotify IDs
+            track_features = features_df.iloc[pos].to_dict() if pos < len(features_df) else {}
             
             # Genres
             track_artist_ids = [a.get("id") for a in artist_list if a.get("id")]
@@ -320,9 +345,11 @@ def analyze_playlist_lyrics(
                 "genres": track_genres
             })
 
+
         context = {
             "processed_tracks": processed_tracks,
-            "artist_genres": genres_map
+            "artist_genres": genres_map,
+            "lyrics_strategy": lyrics_strategy
         }
 
         from app.analysis.processors.lyric_sentiment import LyricSentimentProcessor

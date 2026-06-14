@@ -52,11 +52,15 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 
         X = features_df[feature_cols].copy()
         
-        # 2. Normalize features
+        # 2. Normalize features (MinMaxScaler → [0,1])
         scaler = MinMaxScaler()
         X_scaled = scaler.fit_transform(X)
         
+        # Store feature_cols in context so splitters can map X_scaled columns
+        context["feature_cols"] = feature_cols
+
         # 2.5. Append weighted metadata features if specified
+
         genre_weight = safe_float(context.get("genre_weight"), 0.0)
         era_weight = safe_float(context.get("era_weight"), 0.0)
         popularity_weight = safe_float(context.get("popularity_weight"), 0.0)
@@ -131,46 +135,54 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             except Exception as e:
                 logger.error(f"Failed to process popularity for weighted clustering: {str(e)}")
 
-        # Lyrics Sentiment
+        # Lyrics Sentiment & Emotions (Multi-Dimensional Strategy)
         if lyrics_weight > 0.0:
             try:
-                sentiments = []
-                from app.services.cache import cache
-                from app.analysis.processors.lyric_sentiment import LyricSentimentProcessor
-                sentiment_proc = LyricSentimentProcessor()
+                strategy_name = context.get("lyrics_strategy", "spotify_model")
+                from app.analysis.processors.lyric_strategies import get_lyric_strategy
+                strategy = get_lyric_strategy(strategy_name)
                 
-                for _, row in tracks_df.iterrows():
+                from app.services.cache import cache
+                
+                lyric_features_list = []
+                for pos, (_, row) in enumerate(tracks_df.iterrows()):
                     tid = row["id"]
-                    analysis = cache.get_track_lyric_analysis(tid)
+                    cache_key = f"{tid}:{strategy_name}"
+                    analysis = cache.get_track_lyric_analysis(cache_key)
                     if analysis is None:
-                        lyrics_info = cache.get_track_lyrics(tid)
-                        if lyrics_info:
-                            track_mock = {
-                                "id": tid,
-                                "name": row.get("name"),
-                                "artists": ", ".join([a.get("name", "") for a in row.get("artists", [])]) if isinstance(row.get("artists"), list) else "",
-                                "features": features_df.loc[tid].to_dict() if tid in features_df.index else {}
-                            }
-                            analysis = sentiment_proc._run_heuristic_analysis(track_mock, lyrics_info.get("lyrics", ""))
-                    
-                    if analysis is None:
-                        track_mock = {
+                        # Build real features from X_scaled (features_df is indexed by ReccoBeats IDs,
+                        # not Spotify IDs, so .loc[tid] always silently returns {})
+                        real_features = {col: float(X_scaled[pos, ci]) for ci, col in enumerate(feature_cols)}
+                        track_data = {
                             "id": tid,
                             "name": row.get("name"),
                             "artists": ", ".join([a.get("name", "") for a in row.get("artists", [])]) if isinstance(row.get("artists"), list) else "",
-                            "features": features_df.loc[tid].to_dict() if tid in features_df.index else {}
+                            "features": real_features
                         }
-                        analysis = sentiment_proc._run_heuristic_analysis(track_mock, "")
+                        lyrics_info = cache.get_track_lyrics(tid)
+                        if lyrics_info:
+                            analysis = strategy.run_heuristic_fallback(track_data, lyrics_info.get("lyrics", ""))
                     
-                    score = safe_float(analysis.get("sentiment_score"), 0.0)
-                    sentiments.append(score)
+                    if analysis is None:
+                        real_features = {col: float(X_scaled[pos, ci]) for ci, col in enumerate(feature_cols)}
+                        track_data = {
+                            "id": tid,
+                            "name": row.get("name"),
+                            "artists": ", ".join([a.get("name", "") for a in row.get("artists", [])]) if isinstance(row.get("artists"), list) else "",
+                            "features": real_features
+                        }
+                        analysis = strategy.run_heuristic_fallback(track_data, "")
+                    
+                    features = strategy.get_clustering_features(analysis)
+                    lyric_features_list.append(features)
                 
-                sentiments_arr = np.array(sentiments).reshape(-1, 1)
-                sentiments_scaled = (sentiments_arr + 1.0) / 2.0
-                sentiments_weighted = sentiments_scaled * lyrics_weight
-                extra_features_parts.append(sentiments_weighted)
+                # Convert list of features to numpy array, scale by lyrics_weight
+                lyric_features_arr = np.array(lyric_features_list)
+                lyric_features_weighted = lyric_features_arr * lyrics_weight
+                extra_features_parts.append(lyric_features_weighted)
             except Exception as e:
-                logger.error(f"Failed to process lyrics sentiment for weighted clustering: {str(e)}")
+                logger.error(f"Failed to process lyrics for weighted clustering: {str(e)}")
+
 
         # Combine Audio scaled and extra features
         if extra_features_parts:
@@ -209,11 +221,15 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         context["llm_recommendations"] = recommendations
         
         # 5. Compute all dimensionality reduction coordinates for instant client-side toggles
-        all_coords = compute_all_coords(X_scaled, features_df, tracks_df, feature_cols)
+        lyrics_strategy = context.get("lyrics_strategy", "spotify_model")
+        all_coords = compute_all_coords(
+            X_scaled, features_df, tracks_df, feature_cols,
+            lyrics_strategy=lyrics_strategy, lyrics_weight=lyrics_weight
+        )
             
         # 6. Merge results and format track list
         processed_tracks = []
-        for idx, row in tracks_df.iterrows():
+        for pos, (idx, row) in enumerate(tracks_df.iterrows()):
             track_id = row["id"]
             artist_list = row.get("artists", [])
             artists_str = ", ".join([a.get("name", "") for a in artist_list])
@@ -229,7 +245,9 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             # Deduplicate genres
             track_genres = list(set(track_genres))
             
-            track_features = features_df.loc[track_id].to_dict() if track_id in features_df.index else {}
+            # Use positional iloc (features_df rows align with tracks_df rows by construction)
+            track_features = features_df.iloc[pos].to_dict() if pos < len(features_df) else {}
+
             
             # Extract popularity and album release date
             popularity = safe_int(row.get("popularity"), 50)
@@ -245,14 +263,14 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 "uri": row["uri"],
                 "artists": artists_str,
                 "album_images": album_images,
-                "cluster": int(cluster_labels[idx]),
-                "x": float(x_coords[idx]),
-                "y": float(y_coords[idx]),
+                "cluster": int(cluster_labels[pos]),
+                "x": float(x_coords[pos]),
+                "y": float(y_coords[pos]),
                 "coords": {
-                    "pca": {"x": float(all_coords["pca"][0][idx]), "y": float(all_coords["pca"][1][idx]), "z": float(all_coords["pca"][2][idx])},
-                    "tsne": {"x": float(all_coords["tsne"][0][idx]), "y": float(all_coords["tsne"][1][idx]), "z": float(all_coords["tsne"][2][idx])},
-                    "umap": {"x": float(all_coords["umap"][0][idx]), "y": float(all_coords["umap"][1][idx]), "z": float(all_coords["umap"][2][idx])},
-                    "circumplex": {"x": float(all_coords["circumplex"][0][idx]), "y": float(all_coords["circumplex"][1][idx]), "z": float(all_coords["circumplex"][2][idx])}
+                    "pca": {"x": float(all_coords["pca"][0][pos]), "y": float(all_coords["pca"][1][pos]), "z": float(all_coords["pca"][2][pos])},
+                    "tsne": {"x": float(all_coords["tsne"][0][pos]), "y": float(all_coords["tsne"][1][pos]), "z": float(all_coords["tsne"][2][pos])},
+                    "umap": {"x": float(all_coords["umap"][0][pos]), "y": float(all_coords["umap"][1][pos]), "z": float(all_coords["umap"][2][pos])},
+                    "circumplex": {"x": float(all_coords["circumplex"][0][pos]), "y": float(all_coords["circumplex"][1][pos]), "z": float(all_coords["circumplex"][2][pos])}
                 },
                 "popularity": popularity,
                 "release_date": release_date,

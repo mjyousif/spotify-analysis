@@ -26,7 +26,8 @@ class AnalysisPipeline:
         genre_weight: float = 0.0,
         era_weight: float = 0.0,
         popularity_weight: float = 0.0,
-        lyrics_weight: float = 0.0
+        lyrics_weight: float = 0.0,
+        lyrics_strategy: str = "spotify_model"
     ) -> Dict[str, Any]:
         """
         Gathers raw data, builds DataFrames, runs all processors, 
@@ -42,7 +43,7 @@ class AnalysisPipeline:
         logger.info(
             f"Running analysis pipeline on {len(tracks)} tracks with k={k}, algorithm={algorithm}, "
             f"genre_weight={genre_weight}, era_weight={era_weight}, "
-            f"popularity_weight={popularity_weight}, lyrics_weight={lyrics_weight}"
+            f"popularity_weight={popularity_weight}, lyrics_weight={lyrics_weight}, strategy={lyrics_strategy}"
         )
         
         # 1. Fetch artist details (genres) from Spotify
@@ -112,7 +113,8 @@ class AnalysisPipeline:
             "genre_weight": genre_weight,
             "era_weight": era_weight,
             "popularity_weight": popularity_weight,
-            "lyrics_weight": lyrics_weight
+            "lyrics_weight": lyrics_weight,
+            "lyrics_strategy": lyrics_strategy
         }
         
         # 6. Run all registered processors
