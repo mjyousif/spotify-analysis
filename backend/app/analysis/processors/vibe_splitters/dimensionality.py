@@ -24,52 +24,65 @@ def compute_all_coords(
     features_df: pd.DataFrame,
     tracks_df: pd.DataFrame,
     feature_cols: List[str]
-) -> Dict[str, Tuple[List[float], List[float]]]:
+) -> Dict[str, Tuple[List[float], List[float], List[float]]]:
     num_tracks = X_scaled.shape[0]
     
     # Initialize defaults
     res = {
-        "pca": ([0.0] * num_tracks, [0.0] * num_tracks),
-        "tsne": ([0.0] * num_tracks, [0.0] * num_tracks),
-        "umap": ([0.0] * num_tracks, [0.0] * num_tracks),
-        "circumplex": ([0.5] * num_tracks, [0.5] * num_tracks)
+        "pca": ([0.0] * num_tracks, [0.0] * num_tracks, [0.0] * num_tracks),
+        "tsne": ([0.0] * num_tracks, [0.0] * num_tracks, [0.0] * num_tracks),
+        "umap": ([0.0] * num_tracks, [0.0] * num_tracks, [0.0] * num_tracks),
+        "circumplex": ([0.5] * num_tracks, [0.5] * num_tracks, [0.5] * num_tracks)
     }
     
     if num_tracks < 1:
         return res
         
-    # Circumplex: Valence (X), Energy (Y)
+    # Circumplex: Valence (X), Energy (Y), Danceability (Z)
     valence_list = []
     energy_list = []
+    danceability_list = []
     for _, row in tracks_df.iterrows():
         track_id = row["id"]
         track_features = features_df.loc[track_id] if track_id in features_df.index else {}
         valence_list.append(float(safe_float(track_features.get("valence"), 0.5)))
         energy_list.append(float(safe_float(track_features.get("energy"), 0.5)))
-    res["circumplex"] = (valence_list, energy_list)
+        danceability_list.append(float(safe_float(track_features.get("danceability"), 0.5)))
+    res["circumplex"] = (valence_list, energy_list, danceability_list)
 
     if num_tracks < 2:
-        res["pca"] = (valence_list, energy_list)
-        res["tsne"] = (valence_list, energy_list)
-        res["umap"] = (valence_list, energy_list)
+        res["pca"] = (valence_list, energy_list, danceability_list)
+        res["tsne"] = (valence_list, energy_list, danceability_list)
+        res["umap"] = (valence_list, energy_list, danceability_list)
         return res
 
     # 1. PCA
     try:
-        pca = PCA(n_components=2, random_state=42)
+        n_comps = min(3, num_tracks)
+        pca = PCA(n_components=n_comps, random_state=42)
         coords = pca.fit_transform(X_scaled)
-        res["pca"] = (coords[:, 0].tolist(), coords[:, 1].tolist())
+        x_pts = coords[:, 0].tolist()
+        y_pts = coords[:, 1].tolist() if n_comps > 1 else [0.0] * num_tracks
+        z_pts = coords[:, 2].tolist() if n_comps > 2 else [0.0] * num_tracks
+        res["pca"] = (x_pts, y_pts, z_pts)
     except Exception as e:
         logger.error(f"PCA failed in compute_all_coords: {e}")
-        res["pca"] = (valence_list, energy_list)
+        res["pca"] = (valence_list, energy_list, danceability_list)
 
     # 2. t-SNE
     try:
         from sklearn.manifold import TSNE
         perplexity = max(1.0, min(30.0, float(num_tracks - 1) / 3.0))
-        tsne = TSNE(n_components=2, random_state=42, perplexity=perplexity)
-        coords = tsne.fit_transform(X_scaled)
-        res["tsne"] = (coords[:, 0].tolist(), coords[:, 1].tolist())
+        n_comps = min(3, num_tracks - 1)
+        if n_comps >= 1:
+            tsne = TSNE(n_components=n_comps, random_state=42, perplexity=perplexity)
+            coords = tsne.fit_transform(X_scaled)
+            x_pts = coords[:, 0].tolist()
+            y_pts = coords[:, 1].tolist() if n_comps > 1 else [0.0] * num_tracks
+            z_pts = coords[:, 2].tolist() if n_comps > 2 else [0.0] * num_tracks
+            res["tsne"] = (x_pts, y_pts, z_pts)
+        else:
+            res["tsne"] = (valence_list, energy_list, danceability_list)
     except Exception as e:
         logger.error(f"t-SNE failed in compute_all_coords: {e}")
         res["tsne"] = res["pca"]
@@ -78,9 +91,16 @@ def compute_all_coords(
     try:
         import umap
         n_neighbors = max(2, min(15, num_tracks - 1))
-        reducer = umap.UMAP(n_components=2, random_state=42, n_neighbors=n_neighbors, n_epochs=200)
-        coords = reducer.fit_transform(X_scaled)
-        res["umap"] = (coords[:, 0].tolist(), coords[:, 1].tolist())
+        n_comps = min(3, num_tracks - 1)
+        if n_comps >= 2:
+            reducer = umap.UMAP(n_components=n_comps, random_state=42, n_neighbors=n_neighbors, n_epochs=200)
+            coords = reducer.fit_transform(X_scaled)
+            x_pts = coords[:, 0].tolist()
+            y_pts = coords[:, 1].tolist() if n_comps > 1 else [0.0] * num_tracks
+            z_pts = coords[:, 2].tolist() if n_comps > 2 else [0.0] * num_tracks
+            res["umap"] = (x_pts, y_pts, z_pts)
+        else:
+            res["umap"] = (valence_list, energy_list, danceability_list)
     except Exception as e:
         logger.error(f"UMAP failed in compute_all_coords: {e}")
         res["umap"] = res["pca"]

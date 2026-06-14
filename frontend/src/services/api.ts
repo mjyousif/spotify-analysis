@@ -47,10 +47,10 @@ export interface TrackData {
   };
   genres: string[];
   coords?: {
-    pca: { x: number; y: number };
-    tsne: { x: number; y: number };
-    umap: { x: number; y: number };
-    circumplex: { x: number; y: number };
+    pca: { x: number; y: number; z?: number };
+    tsne: { x: number; y: number; z?: number };
+    umap: { x: number; y: number; z?: number };
+    circumplex: { x: number; y: number; z?: number };
   };
 }
 

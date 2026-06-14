@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
 // Import the pre-built dist bundle to avoid Vite/Rolldown issues
 // with Node.js built-ins (buffer, stream, etc.) in plotly.js source
 import Plotly from 'plotly.js/dist/plotly';
@@ -28,6 +28,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
 }) => {
   const plotRef = useRef<HTMLDivElement>(null);
   const isPlotInitialized = useRef(false);
+  const [is3D, setIs3D] = useState(false);
 
   // Keep a mutable ref to the latest callback so we don't need to re-bindlisteners
   const onSelectTrackRef = useRef(onSelectTrack);
@@ -54,78 +55,145 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
       const displayName = rec ? rec.playlist_name : (isOutlier ? 'Wildcards / Outliers' : `Vibe ${cluster.cluster_id + 1}`);
       const color = isOutlier ? '#6b7280' : colors[idx % colors.length];
 
-      return {
+      const baseTrace: any = {
         x: clusterTracks.map(t => t.coords?.[projectionMode]?.x ?? t.x),
         y: clusterTracks.map(t => t.coords?.[projectionMode]?.y ?? t.y),
         text: clusterTracks.map(t => `<b>${t.name}</b><br>${t.artists}`),
         customdata: clusterTracks.map(t => t.id),
         mode: 'markers' as const,
-        type: 'scatter' as const,
+        type: is3D ? ('scatter3d' as const) : ('scatter' as const),
         name: displayName,
         hoverinfo: 'text' as const,
         marker: {
-          size: 10,
+          size: is3D ? 7 : 10,
           color: color,
           opacity: 0.75,
           line: { width: 1, color: '#111218' }
         }
       };
+
+      if (is3D) {
+        baseTrace.z = clusterTracks.map(t => t.coords?.[projectionMode]?.z ?? 0);
+      }
+
+      return baseTrace;
     });
-  }, [tracks, clusters, recommendations, projectionMode]);
+  }, [tracks, clusters, recommendations, projectionMode, is3D]);
 
   // Build a highlight trace for the selected point
   const selectedTrace = useMemo(() => {
     if (!selectedTrack) return null;
-    return {
+    const baseTrace: any = {
       x: [selectedTrack.coords?.[projectionMode]?.x ?? selectedTrack.x],
       y: [selectedTrack.coords?.[projectionMode]?.y ?? selectedTrack.y],
       text: [`<b>${selectedTrack.name}</b><br>${selectedTrack.artists}`],
       mode: 'markers' as const,
-      type: 'scatter' as const,
+      type: is3D ? ('scatter3d' as const) : ('scatter' as const),
       name: 'Selected',
       hoverinfo: 'text' as const,
       showlegend: false,
       marker: {
-        size: 17,
+        size: is3D ? 12 : 17,
         color: '#ffffff',
-        opacity: 1.0,
-        symbol: 'circle-open',
-        line: { width: 2.5, color: '#ffffff' }
+        opacity: 0.95,
+        line: { width: 2, color: '#3b82f6' }
       }
     };
-  }, [selectedTrack, projectionMode]);
 
-  const layout = useMemo(() => ({
-    autosize: true,
-    hovermode: 'closest' as const,
-    paper_bgcolor: 'rgba(0,0,0,0)',
-    plot_bgcolor: 'rgba(0,0,0,0)',
-    margin: { l: 20, r: 20, t: 20, b: 20 },
-    xaxis: {
-      showgrid: true,
-      gridcolor: 'rgba(255,255,255,0.03)',
-      zeroline: false,
-      showticklabels: false,
-      linecolor: 'rgba(255,255,255,0.05)'
-    },
-    yaxis: {
-      showgrid: true,
-      gridcolor: 'rgba(255,255,255,0.03)',
-      zeroline: false,
-      showticklabels: false,
-      linecolor: 'rgba(255,255,255,0.05)'
-    },
-    legend: {
-      orientation: 'h' as const,
-      y: -0.1,
-      font: { color: '#9ca3af', size: 11 }
-    },
-    hoverlabel: {
-      bgcolor: '#1f2937',
-      bordercolor: '#374151',
-      font: { color: '#ffffff', family: 'Inter, sans-serif' }
+    if (is3D) {
+      baseTrace.z = [selectedTrack.coords?.[projectionMode]?.z ?? 0];
+    } else {
+      baseTrace.marker.symbol = 'circle-open';
+      baseTrace.marker.line = { width: 2.5, color: '#ffffff' };
+      baseTrace.marker.opacity = 1.0;
     }
-  }), []);
+
+    return baseTrace;
+  }, [selectedTrack, projectionMode, is3D]);
+
+  const getAxisLabels = useCallback(() => {
+    if (projectionMode === 'circumplex') {
+      return { x: 'Valence (Positivity)', y: 'Energy (Intensity)', z: 'Danceability' };
+    }
+    if (projectionMode === 'pca') {
+      return { x: 'Principal Component 1', y: 'Principal Component 2', z: 'Principal Component 3' };
+    }
+    const modeName = projectionMode.toUpperCase();
+    return { x: `${modeName} Axis 1`, y: `${modeName} Axis 2`, z: `${modeName} Axis 3` };
+  }, [projectionMode]);
+
+  const layout = useMemo(() => {
+    const baseLayout: any = {
+      autosize: true,
+      hovermode: 'closest' as const,
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      margin: is3D ? { l: 0, r: 0, t: 0, b: 0 } : { l: 20, r: 20, t: 20, b: 20 },
+      legend: {
+        orientation: 'h' as const,
+        y: -0.1,
+        font: { color: '#9ca3af', size: 11 }
+      },
+      hoverlabel: {
+        bgcolor: '#1f2937',
+        bordercolor: '#374151',
+        font: { color: '#ffffff', family: 'Inter, sans-serif' }
+      }
+    };
+
+    if (is3D) {
+      const labels = getAxisLabels();
+      baseLayout.scene = {
+        xaxis: {
+          showgrid: true,
+          gridcolor: 'rgba(255,255,255,0.05)',
+          zeroline: false,
+          showticklabels: false,
+          title: { text: labels.x, font: { color: '#9ca3af', size: 10 } },
+          backgroundcolor: 'rgba(0,0,0,0)',
+          showbackground: false
+        },
+        yaxis: {
+          showgrid: true,
+          gridcolor: 'rgba(255,255,255,0.05)',
+          zeroline: false,
+          showticklabels: false,
+          title: { text: labels.y, font: { color: '#9ca3af', size: 10 } },
+          backgroundcolor: 'rgba(0,0,0,0)',
+          showbackground: false
+        },
+        zaxis: {
+          showgrid: true,
+          gridcolor: 'rgba(255,255,255,0.05)',
+          zeroline: false,
+          showticklabels: false,
+          title: { text: labels.z, font: { color: '#9ca3af', size: 10 } },
+          backgroundcolor: 'rgba(0,0,0,0)',
+          showbackground: false
+        },
+        camera: {
+          eye: { x: 1.5, y: 1.5, z: 1.25 }
+        }
+      };
+    } else {
+      baseLayout.plot_bgcolor = 'rgba(0,0,0,0)';
+      baseLayout.xaxis = {
+        showgrid: true,
+        gridcolor: 'rgba(255,255,255,0.03)',
+        zeroline: false,
+        showticklabels: false,
+        linecolor: 'rgba(255,255,255,0.05)'
+      };
+      baseLayout.yaxis = {
+        showgrid: true,
+        gridcolor: 'rgba(255,255,255,0.03)',
+        zeroline: false,
+        showticklabels: false,
+        linecolor: 'rgba(255,255,255,0.05)'
+      };
+    }
+
+    return baseLayout;
+  }, [is3D, getAxisLabels]);
 
   const config = useMemo(() => ({
     displayModeBar: false,
@@ -206,17 +274,20 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
   }, [selectedTrace, plotTraces, layout, config]);
 
   const getDescription = (mode: 'pca' | 'tsne' | 'umap' | 'circumplex') => {
+    const suffix = is3D ? ' (3D Projection)' : ' (2D Projection)';
     switch (mode) {
       case 'pca':
-        return 'PCA reduction of track acoustics. Preserves global feature structure.';
+        return 'PCA reduction of track acoustics. Preserves global feature structure' + suffix + '.';
       case 'tsne':
-        return 't-SNE projection of track acoustics. Groups similar tracks into tight clusters.';
+        return 't-SNE projection of track acoustics. Groups similar tracks into tight clusters' + suffix + '.';
       case 'umap':
-        return 'UMAP projection of track acoustics. Balances local and global structural similarity.';
+        return 'UMAP projection of track acoustics. Balances local and global structural similarity' + suffix + '.';
       case 'circumplex':
-        return 'Russell Circumplex mapping (Valence vs. Energy). Natural emotional coordinate representation.';
+        return (is3D
+          ? 'Russell Circumplex mapping (Valence vs. Energy vs. Danceability).'
+          : 'Russell Circumplex mapping (Valence vs. Energy). Natural emotional coordinate representation.') + suffix + '.';
       default:
-        return 'Dimensionality reduction of track acoustics.';
+        return 'Dimensionality reduction of track acoustics' + suffix + '.';
     }
   };
 
@@ -227,12 +298,38 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
           <h3 className="text-lg font-bold text-white tracking-tight">Vibe Similarity Map</h3>
           <p className="text-xs text-gray-500">{getDescription(projectionMode)}</p>
         </div>
-        <div className="flex items-center space-x-1.5 self-start sm:self-center">
-          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Map:</span>
+        <div className="flex items-center space-x-2 self-start sm:self-center">
+          {/* Dimension toggle button group */}
+          <div className="flex bg-gray-950 border border-gray-850 rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => setIs3D(false)}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                !is3D
+                  ? 'bg-violet-600/90 text-white shadow-sm font-extrabold'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              2D
+            </button>
+            <button
+              type="button"
+              onClick={() => setIs3D(true)}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                is3D
+                  ? 'bg-violet-600/90 text-white shadow-sm font-extrabold'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              3D
+            </button>
+          </div>
+
+          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider pl-1">Map:</span>
           <select
             value={projectionMode}
             onChange={(e) => setProjectionMode(e.target.value as any)}
-            className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors"
+            className="bg-gray-950 border border-gray-850 rounded-lg px-2.5 py-1 text-xs text-gray-250 font-bold focus:outline-none focus:border-violet-500 transition-colors cursor-pointer"
           >
             <option value="pca">PCA</option>
             <option value="tsne">t-SNE</option>
@@ -243,7 +340,7 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
             <button
               type="button"
               onClick={() => onOpenDocs('projections', projectionMode)}
-              className="text-gray-400 hover:text-violet-450 p-1 hover:bg-gray-950 rounded-lg transition-colors border border-transparent hover:border-gray-850"
+              className="text-gray-400 hover:text-violet-450 p-1 hover:bg-gray-950 rounded-lg transition-colors border border-transparent hover:border-gray-850 cursor-pointer"
               title="View Projection Documentation"
             >
               <HelpCircle className="w-3.5 h-3.5" />

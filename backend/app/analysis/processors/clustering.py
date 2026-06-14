@@ -249,10 +249,10 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
                 "x": float(x_coords[idx]),
                 "y": float(y_coords[idx]),
                 "coords": {
-                    "pca": {"x": float(all_coords["pca"][0][idx]), "y": float(all_coords["pca"][1][idx])},
-                    "tsne": {"x": float(all_coords["tsne"][0][idx]), "y": float(all_coords["tsne"][1][idx])},
-                    "umap": {"x": float(all_coords["umap"][0][idx]), "y": float(all_coords["umap"][1][idx])},
-                    "circumplex": {"x": float(all_coords["circumplex"][0][idx]), "y": float(all_coords["circumplex"][1][idx])}
+                    "pca": {"x": float(all_coords["pca"][0][idx]), "y": float(all_coords["pca"][1][idx]), "z": float(all_coords["pca"][2][idx])},
+                    "tsne": {"x": float(all_coords["tsne"][0][idx]), "y": float(all_coords["tsne"][1][idx]), "z": float(all_coords["tsne"][2][idx])},
+                    "umap": {"x": float(all_coords["umap"][0][idx]), "y": float(all_coords["umap"][1][idx]), "z": float(all_coords["umap"][2][idx])},
+                    "circumplex": {"x": float(all_coords["circumplex"][0][idx]), "y": float(all_coords["circumplex"][1][idx]), "z": float(all_coords["circumplex"][2][idx])}
                 },
                 "popularity": popularity,
                 "release_date": release_date,

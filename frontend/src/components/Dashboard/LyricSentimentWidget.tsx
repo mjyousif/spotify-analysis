@@ -3,7 +3,8 @@ import { apiService } from '../../services/api';
 import type { TrackData, LyricsAnalysisData, TrackLyricAnalysis } from '../../services/api';
 import { 
   BookOpen, Sparkles, Smile, Heart, Frown, Flame, 
-  HelpCircle, ChevronDown, AlignLeft, Info, RefreshCw
+  HelpCircle, ChevronDown, AlignLeft, Info, RefreshCw,
+  Zap, CloudRain
 } from 'lucide-react';
 
 interface LyricSentimentWidgetProps {
@@ -128,7 +129,16 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
   // Map mood names to colors, icons, and labels
   const getMoodMeta = (mood: string) => {
     const norm = mood.toLowerCase().trim();
-    if (norm.includes('joy') || norm.includes('happy') || norm.includes('uplift')) {
+    if (
+      norm.includes('joy') || 
+      norm.includes('happy') || 
+      norm.includes('uplift') || 
+      norm.includes('cheerful') || 
+      norm.includes('bright') || 
+      norm.includes('celebrate') || 
+      norm.includes('excited') || 
+      norm.includes('optimistic')
+    ) {
       return {
         color: 'text-emerald-400',
         bg: 'bg-emerald-500/10 border-emerald-500/20',
@@ -136,7 +146,14 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
         label: 'Joyful'
       };
     }
-    if (norm.includes('romance') || norm.includes('love') || norm.includes('passion')) {
+    if (
+      norm.includes('romance') || 
+      norm.includes('romantic') || 
+      norm.includes('love') || 
+      norm.includes('passion') || 
+      norm.includes('intimate') || 
+      norm.includes('affection')
+    ) {
       return {
         color: 'text-fuchsia-400',
         bg: 'bg-fuchsia-500/10 border-fuchsia-500/20',
@@ -144,7 +161,14 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
         label: 'Romantic'
       };
     }
-    if (norm.includes('melanchol') || norm.includes('sad') || norm.includes('blue') || norm.includes('grief')) {
+    if (
+      norm.includes('melanchol') || 
+      norm.includes('sad') || 
+      norm.includes('blue') || 
+      norm.includes('grief') || 
+      norm.includes('heartbreak') || 
+      norm.includes('sorrow')
+    ) {
       return {
         color: 'text-violet-400',
         bg: 'bg-violet-500/10 border-violet-500/20',
@@ -152,7 +176,16 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
         label: 'Melancholic'
       };
     }
-    if (norm.includes('angr') || norm.includes('rage') || norm.includes('intense') || norm.includes('aggress')) {
+    if (
+      norm.includes('angr') || 
+      norm.includes('rage') || 
+      norm.includes('intense') || 
+      norm.includes('aggress') || 
+      norm.includes('hate') || 
+      norm.includes('rebel') || 
+      norm.includes('dark') || 
+      norm.includes('heavy')
+    ) {
       return {
         color: 'text-red-400',
         bg: 'bg-red-500/10 border-red-500/20',
@@ -160,7 +193,15 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
         label: 'Intense/Angry'
       };
     }
-    if (norm.includes('peace') || norm.includes('calm') || norm.includes('reflect')) {
+    if (
+      norm.includes('peace') || 
+      norm.includes('calm') || 
+      norm.includes('reflect') || 
+      norm.includes('ambient') || 
+      norm.includes('dream') || 
+      norm.includes('chill') || 
+      norm.includes('serene')
+    ) {
       return {
         color: 'text-teal-400',
         bg: 'bg-teal-500/10 border-teal-500/20',
@@ -168,11 +209,45 @@ export const LyricSentimentWidget: React.FC<LyricSentimentWidgetProps> = ({
         label: 'Peaceful'
       };
     }
-    if (norm.includes('instrumental')) {
+    if (
+      norm.includes('energetic') || 
+      norm.includes('energy') || 
+      norm.includes('hype') || 
+      norm.includes('upbeat') || 
+      norm.includes('workout') || 
+      norm.includes('loud') || 
+      norm.includes('fast') || 
+      norm.includes('triumphant')
+    ) {
+      return {
+        color: 'text-amber-400',
+        bg: 'bg-amber-500/10 border-amber-500/20',
+        icon: <Zap className="w-4 h-4 text-amber-400" />,
+        label: 'Energetic'
+      };
+    }
+    if (
+      norm.includes('desperate') || 
+      norm.includes('despair') || 
+      norm.includes('anxious') || 
+      norm.includes('anxiety') || 
+      norm.includes('fear') || 
+      norm.includes('hopeless') || 
+      norm.includes('lonely') || 
+      norm.includes('struggle')
+    ) {
       return {
         color: 'text-slate-400',
         bg: 'bg-slate-500/10 border-slate-500/20',
-        icon: <BookOpen className="w-4 h-4 text-slate-400" />,
+        icon: <CloudRain className="w-4 h-4 text-slate-400" />,
+        label: 'Desperate'
+      };
+    }
+    if (norm.includes('instrumental')) {
+      return {
+        color: 'text-slate-500',
+        bg: 'bg-slate-500/10 border-slate-500/20',
+        icon: <BookOpen className="w-4 h-4 text-slate-500" />,
         label: 'Instrumental'
       };
     }
