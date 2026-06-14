@@ -54,7 +54,7 @@ def analyze_playlist(
         if include_llm:
             pipeline = create_default_pipeline()
         else:
-            pipeline = create_clustering_pipeline()
+            pipeline = create_clustering_pipeline(lyrics_weight=lyrics_weight)
 
         result = pipeline.run(
             token, 

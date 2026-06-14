@@ -103,7 +103,29 @@ class AnalysisPipeline:
         tracks_df = pd.DataFrame(valid_tracks)
         features_df = pd.DataFrame(features_list)
         features_df.set_index("id", inplace=True)
-        
+
+        # 4.5. Pre-build processed_tracks so LyricSentimentProcessor can run before
+        # VibeClusteringProcessor (which would otherwise be the one to populate it).
+        pre_processed_tracks = []
+        for pos, t in enumerate(valid_tracks):
+            tid = t.get("id")
+            artist_list = t.get("artists", [])
+            artists_str = ", ".join([a.get("name", "") for a in artist_list]) if isinstance(artist_list, list) else ""
+            raw_features = features_list[pos] if pos < len(features_list) else {}
+            pre_processed_tracks.append({
+                "id": tid,
+                "name": t.get("name", ""),
+                "artists": artists_str,
+                "features": {
+                    "tempo": raw_features.get("tempo", 120.0),
+                    "energy": raw_features.get("energy", 0.5),
+                    "valence": raw_features.get("valence", 0.5),
+                    "acousticness": raw_features.get("acousticness", 0.5),
+                    "danceability": raw_features.get("danceability", 0.5),
+                    "duration_ms": t.get("duration_ms", 0),
+                }
+            })
+
         # 5. Initialize Context for processors
         context = {
             "k": k,
@@ -114,7 +136,8 @@ class AnalysisPipeline:
             "era_weight": era_weight,
             "popularity_weight": popularity_weight,
             "lyrics_weight": lyrics_weight,
-            "lyrics_strategy": lyrics_strategy
+            "lyrics_strategy": lyrics_strategy,
+            "processed_tracks": pre_processed_tracks,
         }
         
         # 6. Run all registered processors
@@ -130,8 +153,13 @@ class AnalysisPipeline:
                 
         return payload
 
-def create_clustering_pipeline() -> AnalysisPipeline:
+def create_clustering_pipeline(lyrics_weight: float = 0.0) -> AnalysisPipeline:
     pipeline = AnalysisPipeline()
+    if lyrics_weight > 0.0:
+        # Run LyricSentimentProcessor first to warm the lyric analysis cache.
+        # VibeClusteringProcessor reads from that cache when lyrics_weight > 0,
+        # so this ordering ensures it always has real data to work with.
+        pipeline.register_processor(LyricSentimentProcessor())
     pipeline.register_processor(VibeClusteringProcessor())
     return pipeline
 
