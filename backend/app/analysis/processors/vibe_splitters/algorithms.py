@@ -9,6 +9,18 @@ from .dimensionality import compute_pca_coords
 logger = logging.getLogger("uvicorn.error")
 
 class KMeansSplitter(BaseVibeSplitter):
+    @property
+    def name(self) -> str:
+        return "K-Means Clustering"
+
+    @property
+    def description(self) -> str:
+        return "Groups tracks by minimizing the distance between tracks and their cluster centers (centroids) in the multidimensional acoustic space."
+
+    @property
+    def help_text(self) -> str:
+        return "A standard, balanced clustering algorithm. It is non-deterministic and assumes spherical cluster shapes, meaning it works best when your vibes are relatively evenly distributed across features like tempo, energy, and danceability."
+
     def split(self, tracks_df: pd.DataFrame, features_df: pd.DataFrame, X_scaled: np.ndarray, k: int, context: Dict[str, Any]):
         num_tracks = len(tracks_df)
         if num_tracks >= 2:
@@ -26,6 +38,18 @@ class KMeansSplitter(BaseVibeSplitter):
 
 
 class AgglomerativeSplitter(BaseVibeSplitter):
+    @property
+    def name(self) -> str:
+        return "Hierarchical (Deterministic)"
+
+    @property
+    def description(self) -> str:
+        return "Creates a tree of clusters using a bottom-up merging strategy, ensuring consistent, repeatable groups."
+
+    @property
+    def help_text(self) -> str:
+        return "Also known as Ward's linkage hierarchical clustering. Unlike K-Means, this algorithm is fully deterministic (running it multiple times on the same data yields identical results). It sequentially merges the most similar tracks until the target number of vibes is reached."
+
     def split(self, tracks_df: pd.DataFrame, features_df: pd.DataFrame, X_scaled: np.ndarray, k: int, context: Dict[str, Any]):
         num_tracks = len(tracks_df)
         if num_tracks >= 2:
@@ -43,6 +67,22 @@ class AgglomerativeSplitter(BaseVibeSplitter):
 
 
 class DbscanSplitter(BaseVibeSplitter):
+    @property
+    def name(self) -> str:
+        return "DBSCAN (Density-Based)"
+
+    @property
+    def description(self) -> str:
+        return "Identifies clusters based on track density, marking isolated or dissimilar songs as outliers."
+
+    @property
+    def help_text(self) -> str:
+        return "Density-Based Spatial Clustering of Applications with Noise. It does not require specifying the number of clusters beforehand. Instead, it finds dense regions and groups tracks within them. Isolated tracks that don't fit well anywhere are labeled as wildcards/outliers (-1), which is ideal for cleaning up heterogeneous playlists."
+
+    @property
+    def recommended_projections(self) -> List[str]:
+        return ["tsne", "umap"]
+
     def split(self, tracks_df: pd.DataFrame, features_df: pd.DataFrame, X_scaled: np.ndarray, k: int, context: Dict[str, Any]):
         num_tracks = len(tracks_df)
         if num_tracks >= 2:

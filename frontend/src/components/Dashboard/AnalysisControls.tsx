@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Info, Settings, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Sliders, Info, Settings, ChevronDown, ChevronUp, Sparkles, HelpCircle } from 'lucide-react';
 
 interface AnalysisControlsProps {
   algorithm: 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic';
@@ -24,6 +24,7 @@ interface AnalysisControlsProps {
     lyricsWeight?: number
   ) => void;
   loading: boolean;
+  onOpenDocs?: (tab: 'algorithms' | 'projections', key?: string) => void;
 }
 
 type PresetName = 'audio' | 'balanced' | 'genre' | 'lyrics' | 'custom';
@@ -44,6 +45,7 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
   recommendedK,
   onUpdateMap,
   loading,
+  onOpenDocs,
 }) => {
   const [showTuning, setShowTuning] = useState<boolean>(false);
   const [preset, setPreset] = useState<PresetName>('audio');
@@ -115,6 +117,16 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
             <option value="genre_first">Genre-First Hierarchical</option>
             <option value="llm_semantic">AI Semantic Splitting</option>
           </select>
+          {onOpenDocs && (
+            <button
+              type="button"
+              onClick={() => onOpenDocs('algorithms', algorithm)}
+              className="text-gray-400 hover:text-violet-450 p-1 hover:bg-gray-950 rounded-lg transition-colors border border-transparent hover:border-gray-850"
+              title="View Algorithm Documentation"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Splits slider if not DBSCAN */}

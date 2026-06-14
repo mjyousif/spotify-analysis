@@ -3,7 +3,7 @@ import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 // with Node.js built-ins (buffer, stream, etc.) in plotly.js source
 import Plotly from 'plotly.js/dist/plotly';
 import type { TrackData, ClusterProfile, Recommendation } from '../../services/api';
-import { Music, ExternalLink } from 'lucide-react';
+import { Music, ExternalLink, HelpCircle } from 'lucide-react';
 
 interface ScatterPlotWidgetProps {
   tracks: TrackData[];
@@ -11,7 +11,9 @@ interface ScatterPlotWidgetProps {
   recommendations: Recommendation[];
   selectedTrack: TrackData | null;
   onSelectTrack: (track: TrackData) => void;
-  defaultProjection?: 'pca' | 'tsne' | 'umap' | 'circumplex';
+  projectionMode: 'pca' | 'tsne' | 'umap' | 'circumplex';
+  setProjectionMode: (mode: 'pca' | 'tsne' | 'umap' | 'circumplex') => void;
+  onOpenDocs?: (tab: 'algorithms' | 'projections', key?: string) => void;
 }
 
 export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
@@ -20,18 +22,12 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
   recommendations,
   selectedTrack,
   onSelectTrack,
-  defaultProjection = 'pca'
+  projectionMode,
+  setProjectionMode,
+  onOpenDocs
 }) => {
-  const [projectionMode, setProjectionMode] = React.useState<'pca' | 'tsne' | 'umap' | 'circumplex'>(defaultProjection);
   const plotRef = useRef<HTMLDivElement>(null);
   const isPlotInitialized = useRef(false);
-
-  // Synchronize projection mode when default projection from backend changes
-  useEffect(() => {
-    if (defaultProjection) {
-      setProjectionMode(defaultProjection);
-    }
-  }, [defaultProjection]);
 
   // Keep a mutable ref to the latest callback so we don't need to re-bindlisteners
   const onSelectTrackRef = useRef(onSelectTrack);
@@ -243,6 +239,16 @@ export const ScatterPlotWidget: React.FC<ScatterPlotWidgetProps> = ({
             <option value="umap">UMAP</option>
             <option value="circumplex">Emotion (Circumplex)</option>
           </select>
+          {onOpenDocs && (
+            <button
+              type="button"
+              onClick={() => onOpenDocs('projections', projectionMode)}
+              className="text-gray-400 hover:text-violet-450 p-1 hover:bg-gray-950 rounded-lg transition-colors border border-transparent hover:border-gray-850"
+              title="View Projection Documentation"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

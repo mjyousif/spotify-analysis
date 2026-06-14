@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSpotifyAuth } from './hooks/useSpotifyAuth';
 import { apiService } from './services/api';
-import type { TrackData, AnalysisResponse } from './services/api';
+import type { TrackData, AnalysisResponse, DocumentationMetadata } from './services/api';
 import { Layout } from './components/Layout';
 import { PlaylistGrid } from './components/PlaylistGrid';
 import { ScatterPlotWidget } from './components/Dashboard/ScatterPlotWidget';
@@ -16,6 +16,7 @@ import { LLMConfigAlert } from './components/Dashboard/LLMConfigAlert';
 import { AnalysisControls } from './components/Dashboard/AnalysisControls';
 import { TrackDetailsPlayer } from './components/Dashboard/TrackDetailsPlayer';
 import { ExportSuccessModal } from './components/Dashboard/ExportSuccessModal';
+import { DocumentationModal } from './components/Dashboard/DocumentationModal';
 
 const LyricSentimentWidget = React.lazy(() =>
   import('./components/Dashboard/LyricSentimentWidget').then(m => ({
@@ -48,6 +49,15 @@ function App() {
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  // Documentation States
+  const [docMetadata, setDocMetadata] = useState<DocumentationMetadata | null>(null);
+  const [isDocModalOpen, setIsDocModalOpen] = useState<boolean>(false);
+  const [docModalTab, setDocModalTab] = useState<'algorithms' | 'projections'>('algorithms');
+  const [docModalKey, setDocModalKey] = useState<string>('');
+  
+  // Projection State (Controlled)
+  const [projectionMode, setProjectionMode] = useState<'pca' | 'tsne' | 'umap' | 'circumplex'>('pca');
+
   // Feature Influence Weight States (Default to 0.0 for backward-compatible pure audio)
   const [genreWeight, setGenreWeight] = useState<number>(0.0);
   const [eraWeight, setEraWeight] = useState<number>(0.0);
@@ -67,6 +77,31 @@ function App() {
   useEffect(() => {
     setLoadSpotifyEmbed(false);
   }, [selectedTrack]);
+
+  // Fetch Documentation Metadata on mount
+  useEffect(() => {
+    apiService.getDocumentationMetadata()
+      .then(data => setDocMetadata(data))
+      .catch(err => console.error("Failed to load documentation metadata:", err));
+  }, []);
+
+  const handleOpenDocs = (tab: 'algorithms' | 'projections', key?: string) => {
+    setDocModalTab(tab);
+    if (key) setDocModalKey(key);
+    setIsDocModalOpen(true);
+  };
+
+  const handleApplySetting = (type: 'algorithm' | 'projection', value: string) => {
+    if (type === 'algorithm') {
+      const algoVal = value as 'kmeans' | 'agglomerative' | 'dbscan' | 'mood_mapping' | 'genre_first' | 'llm_semantic';
+      setAlgorithm(algoVal);
+      // Run analysis with the new algorithm immediately so the user sees results
+      handleRunAnalysis(selectedPlaylistId || '', kValue, algoVal, genreWeight, eraWeight, popularityWeight, lyricsWeight);
+    } else if (type === 'projection') {
+      const projVal = value as 'pca' | 'tsne' | 'umap' | 'circumplex';
+      setProjectionMode(projVal);
+    }
+  };
 
   // Run Vibe Analysis on a Playlist
   const handleRunAnalysis = (
@@ -95,6 +130,9 @@ function App() {
         setAnalysisData(data);
         if (customK === undefined && data.recommended_k) {
           setKValue(data.recommended_k);
+        }
+        if (data.default_projection) {
+          setProjectionMode(data.default_projection);
         }
         if (data.tracks.length > 0) {
           setSelectedTrack(data.tracks[0]);
@@ -187,6 +225,7 @@ function App() {
             recommendedK={analysisData.recommended_k}
             onUpdateMap={(k, algo, gw, ew, pw, lw) => handleRunAnalysis(selectedPlaylistId, k, algo, gw, ew, pw, lw)}
             loading={analysisLoading}
+            onOpenDocs={handleOpenDocs}
           />
         )}
       </div>
@@ -227,7 +266,9 @@ function App() {
                   recommendations={analysisData.recommendations}
                   selectedTrack={selectedTrack}
                   onSelectTrack={handleSelectTrack}
-                  defaultProjection={analysisData.default_projection}
+                  projectionMode={projectionMode}
+                  setProjectionMode={setProjectionMode}
+                  onOpenDocs={handleOpenDocs}
                 />
               </ErrorBoundary>
             </div>
@@ -311,6 +352,16 @@ function App() {
           }}
         />
       )}
+
+      {/* Dynamic Documentation System Modal */}
+      <DocumentationModal
+        isOpen={isDocModalOpen}
+        onClose={() => setIsDocModalOpen(false)}
+        metadata={docMetadata}
+        initialTab={docModalTab}
+        initialKey={docModalKey}
+        onApplySetting={handleApplySetting}
+      />
     </Layout>
   );
 }

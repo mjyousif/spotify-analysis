@@ -7,6 +7,22 @@ from .dimensionality import compute_pca_coords
 
 class MoodMappingSplitter(BaseVibeSplitter):
     @property
+    def name(self) -> str:
+        return "Mood Mapping (2D Circumplex)"
+
+    @property
+    def description(self) -> str:
+        return "Maps tracks to a standard 2D emotional grid based on Spotify valence (positivity) and energy features."
+
+    @property
+    def help_text(self) -> str:
+        return "Uses Russell's Circumplex Model of Affect. Tracks are assigned to emotional quadrants: High Energy & High Valence (Happy/Upbeat), Low Energy & High Valence (Calm/Smooth), Low Energy & Low Valence (Moody/Melancholic), and High Energy & Low Valence (Intense/Dark). Excellent for visual and emotional structuring."
+
+    @property
+    def recommended_projections(self) -> List[str]:
+        return ["circumplex"]
+
+    @property
     def default_projection(self) -> str:
         return "circumplex"
 
@@ -56,6 +72,18 @@ class MoodMappingSplitter(BaseVibeSplitter):
 
 
 class GenreFirstSplitter(BaseVibeSplitter):
+    @property
+    def name(self) -> str:
+        return "Genre-First Hierarchical"
+
+    @property
+    def description(self) -> str:
+        return "Groups tracks by their primary artist genres first, placing remaining tracks into a wildcard category."
+
+    @property
+    def help_text(self) -> str:
+        return "Prioritizes artist metadata. It scans your playlist, identifies the most common genre tags, and forms clusters around those primary genres. Any track whose artists do not match the top genres is grouped into an 'Other/Wildcard' category, ensuring clear genre boundaries."
+
     def split(self, tracks_df: pd.DataFrame, features_df: pd.DataFrame, X_scaled: np.ndarray, k: int, context: Dict[str, Any]):
         num_tracks = len(tracks_df)
         track_genres_list = []

@@ -116,6 +116,19 @@ export interface LlmConfigResponse {
   api_base?: string;
 }
 
+export interface DocItem {
+  name: string;
+  description: string;
+  help_text: string;
+  recommended_projections?: string[];
+  recommended_algorithms?: string[];
+}
+
+export interface DocumentationMetadata {
+  algorithms: Record<string, DocItem>;
+  projections: Record<string, DocItem>;
+}
+
 export interface SpotifyLoginUrlResponse {
   url: string;
 }
@@ -143,6 +156,11 @@ export const apiService = {
 
   async getLlmConfig(): Promise<LlmConfigResponse> {
     const response = await api.get<LlmConfigResponse>('/api/config/llm');
+    return response.data;
+  },
+
+  async getDocumentationMetadata(): Promise<DocumentationMetadata> {
+    const response = await api.get<DocumentationMetadata>('/api/config/documentation');
     return response.data;
   },
 

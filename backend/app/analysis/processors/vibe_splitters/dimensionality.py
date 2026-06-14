@@ -86,3 +86,31 @@ def compute_all_coords(
         res["umap"] = res["pca"]
 
     return res
+
+
+PROJECTION_METADATA = {
+    "pca": {
+        "name": "PCA (Principal Component Analysis)",
+        "description": "Reduces dimensions by finding the axes of maximum variance in acoustic feature space.",
+        "help_text": "Principal Component Analysis is a linear dimensionality reduction method. It projects the multi-dimensional audio features onto two key axes that capture the maximum spread of the data. It is excellent for preserving the global structure and layout of the entire playlist, showing which tracks are broadly similar.",
+        "recommended_algorithms": ["kmeans", "agglomerative", "genre_first", "llm_semantic"]
+    },
+    "tsne": {
+        "name": "t-SNE (t-Distributed Stochastic Neighbor Embedding)",
+        "description": "A non-linear technique that groups close neighbors tightly while ignoring global distances.",
+        "help_text": "t-SNE is a non-linear probability-based visualization tool. It is designed to preserve local relationships, meaning highly similar tracks are compressed into tight, distinct neighborhoods on the plot. Note: the distances between clusters are not meaningful, and it can be non-deterministic.",
+        "recommended_algorithms": ["kmeans", "agglomerative", "dbscan"]
+    },
+    "umap": {
+        "name": "UMAP (Uniform Manifold Approximation and Projection)",
+        "description": "Balances local and global structure using manifold learning for natural cluster visual separation.",
+        "help_text": "UMAP is a state-of-the-art non-linear dimensionality reduction algorithm. It preserves both the local groupings (like t-SNE) and the global relationships between those groups (like PCA). This makes it the most natural representation for exploring complex vibe clusters.",
+        "recommended_algorithms": ["kmeans", "agglomerative", "dbscan", "llm_semantic"]
+    },
+    "circumplex": {
+        "name": "Russell Circumplex Model",
+        "description": "Uses Valence as the horizontal axis (mood positivity) and Energy as the vertical axis.",
+        "help_text": "Russell's Circumplex Model of Affect represents emotion along two axes: Valence (pleasure-displeasure) and Arousal/Energy (activation-deactivation). This plot places happy tracks top-right, angry/intense tracks top-left, sad/depressed tracks bottom-left, and peaceful tracks bottom-right. It is fully intuitive and readable.",
+        "recommended_algorithms": ["mood_mapping"]
+    }
+}

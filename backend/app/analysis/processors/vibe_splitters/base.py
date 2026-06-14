@@ -27,6 +27,24 @@ def is_valid_key(key: str) -> bool:
 
 class BaseVibeSplitter(ABC):
     @property
+    @abstractmethod
+    def name(self) -> str:
+        pass
+
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        pass
+
+    @property
+    def help_text(self) -> str:
+        return ""
+
+    @property
+    def recommended_projections(self) -> List[str]:
+        return ["pca", "tsne", "umap"]
+
+    @property
     def default_projection(self) -> str:
         return "pca"
 

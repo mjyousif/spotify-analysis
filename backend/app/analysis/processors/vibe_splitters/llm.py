@@ -91,6 +91,18 @@ def resolve_llm_config() -> Tuple[str, str, Optional[str], Optional[str], bool]:
 
 
 class LlmSemanticSplitter(BaseVibeSplitter):
+    @property
+    def name(self) -> str:
+        return "AI Semantic Splitting"
+
+    @property
+    def description(self) -> str:
+        return "Leverages large language models to analyze track titles, artists, genres, and lyrics to group tracks by abstract themes."
+
+    @property
+    def help_text(self) -> str:
+        return "A semantic clustering method using LLMs (e.g., Gemini, OpenAI, Claude). It looks beyond numerical audio features to understand cultural references, lyrical themes, and stylistic nuances. For example, it can group songs suitable for 'rainy Sunday mornings' vs 'night drives' based on their textual and contextual meaning."
+
     def split(self, tracks_df: pd.DataFrame, features_df: pd.DataFrame, X_scaled: np.ndarray, k: int, context: Dict[str, Any]):
         num_tracks = len(tracks_df)
         provider, actual_model, api_base, api_key, has_llm_key = resolve_llm_config()

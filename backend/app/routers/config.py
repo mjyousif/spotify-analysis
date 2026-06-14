@@ -81,3 +81,26 @@ def get_llm_config():
         "llm_model": actual_model or "none",
         "api_base": api_base or None
     }
+
+
+@router.get("/documentation")
+def get_documentation():
+    """
+    Returns dynamic documentation metadata for all vibe splitters and projections.
+    """
+    from app.analysis.processors.vibe_splitters.registry import SPLITTER_REGISTRY
+    from app.analysis.processors.vibe_splitters.dimensionality import PROJECTION_METADATA
+
+    algorithms_meta = {}
+    for key, splitter in SPLITTER_REGISTRY.items():
+        algorithms_meta[key] = {
+            "name": splitter.name,
+            "description": splitter.description,
+            "help_text": splitter.help_text,
+            "recommended_projections": splitter.recommended_projections
+        }
+
+    return {
+        "algorithms": algorithms_meta,
+        "projections": PROJECTION_METADATA
+    }
