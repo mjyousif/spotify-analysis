@@ -104,7 +104,7 @@ class LLMRecommendationProcessor(BaseAnalysisProcessor):
             prompt = f"""
 You are a professional music curator and playlist designer.
 I have clustered a user's Spotify playlist into vibe subgroups. Below is the data representing each cluster.
-Analyze each cluster and generate a creative playlist name (avoiding generic names like 'Chill Vibes' or 'Upbeat Mix'), a short Spotify-ready description (1-2 sentences), and a detailed explanation of the 'vibe' (what mood it is, why these songs go together).
+Analyze each cluster and generate a creative playlist name (avoiding generic names like 'Chill Vibes' or 'Upbeat Mix'), a short Spotify-ready description (exactly 1 sentence), and a brief explanation of the 'vibe' (at most 2 sentences). Keep explanations and descriptions highly concise to prevent output truncation.
 
 Note: If a cluster has a cluster_id of -1, it represents "Wildcard" or "Outlier" songs that did not fit cleanly into the other core vibes. Give it a creative name representing its diverse or misfit nature (e.g., 'The Eclectic Wildcards', 'Sonic Misfits', or 'Curious Oddities') and write a description explaining that it contains the unique exceptions of the playlist.
 
@@ -118,19 +118,20 @@ Format your response as a JSON object containing a list of recommendations, exac
       "cluster_id": 0,
       "playlist_name": "Name of Playlist",
       "description": "Short description.",
-      "vibe_explanation": "Detailed paragraph explaining the vibe, mood, and characteristics of this cluster."
+      "vibe_explanation": "Brief explanation."
     }},
     ...
   ]
 }}
 
 Ensure the output is valid JSON and nothing else. Do not wrap in markdown code blocks.
+IMPORTANT: Inside the JSON string values (playlist_name, description, vibe_explanation), NEVER use double quotes ("). If you need to quote something, use single quotes (') instead. Double quotes inside string values will break the JSON parser.
 """
-            # Build completion kwargs
             completion_kwargs = {
                 "model": actual_model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.5,
+                "max_tokens": 4096,
             }
             if api_base:
                 completion_kwargs["api_base"] = api_base
@@ -151,12 +152,28 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
                 response = litellm.completion(**completion_kwargs)
             
             content = response.choices[0].message.content
-            # Clean response if LLM accidentally wrapped it in markdown code blocks
+            
+            # Clean up the output
+            content = content.strip()
             if content.startswith("```"):
                 content = re.sub(r"^```json\s*", "", content)
                 content = re.sub(r"```$", "", content).strip()
                 
-            data = json.loads(content)
+            from app.analysis.processors.vibe_splitters.llm import (
+                escape_raw_control_chars_in_json_strings,
+                repair_truncated_json
+            )
+            content = escape_raw_control_chars_in_json_strings(content)
+            # Remove trailing commas from objects/arrays
+            content = re.sub(r',\s*([\]}])', r'\1', content)
+                
+            try:
+                data = json.loads(content)
+            except Exception as parse_err:
+                logger.warning(f"Recommender direct JSON parse failed: {parse_err}. Attempting repair...")
+                repaired = repair_truncated_json(content)
+                data = json.loads(repaired)
+                
             recommendations = data.get("recommendations", [])
             
             # Match LLM recommendations with profiles to ensure all clusters are represented

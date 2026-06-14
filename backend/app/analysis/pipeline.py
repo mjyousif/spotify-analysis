@@ -113,6 +113,7 @@ class AnalysisPipeline:
                     payload.update(result)
             except Exception as e:
                 logger.error(f"Processor {processor.__class__.__name__} failed: {str(e)}")
+                raise e
                 
         return payload
 

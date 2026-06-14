@@ -90,6 +90,159 @@ def resolve_llm_config() -> Tuple[str, str, Optional[str], Optional[str], bool]:
     return provider, actual_model, api_base, api_key, has_llm_key
 
 
+class LlmSplitterError(Exception):
+    """Exception raised when LLM-based vibe splitting fails."""
+    pass
+
+
+def escape_raw_control_chars_in_json_strings(s: str) -> str:
+    in_string = False
+    escaped = False
+    result = []
+    for char in s:
+        if char == '"' and not escaped:
+            in_string = not in_string
+            result.append(char)
+        elif in_string:
+            if char == '\\':
+                escaped = not escaped
+                result.append(char)
+            else:
+                if char == '\n':
+                    result.append('\\n')
+                elif char == '\r':
+                    result.append('\\r')
+                elif char == '\t':
+                    result.append('\\t')
+                else:
+                    result.append(char)
+                escaped = False
+        else:
+            result.append(char)
+            escaped = False
+    return "".join(result)
+
+
+def repair_truncated_json(s: str) -> str:
+    s = s.strip()
+    in_string = False
+    escaped = False
+    stack = []
+    clean_chars = []
+    for char in s:
+        if char == '"' and not escaped:
+            in_string = not in_string
+            clean_chars.append(char)
+        elif in_string:
+            if char == '\\':
+                escaped = not escaped
+            else:
+                escaped = False
+            clean_chars.append(char)
+        else:
+            if char in ['{', '[']:
+                stack.append(char)
+            elif char in ['}', ']']:
+                if stack:
+                    top = stack[-1]
+                    if (char == '}' and top == '{') or (char == ']' and top == '['):
+                        stack.pop()
+            clean_chars.append(char)
+            
+    if in_string:
+        while clean_chars and clean_chars[-1] != '"':
+            clean_chars.pop()
+        if clean_chars:
+            clean_chars.pop()
+            
+    reconstructed = "".join(clean_chars).strip()
+    
+    while reconstructed and reconstructed[-1] in [',', ':', '{', '[', ' ', '\n', '\r', '\t']:
+        reconstructed = reconstructed[:-1].strip()
+        
+    new_stack = []
+    in_string = False
+    escaped = False
+    for char in reconstructed:
+        if char == '"' and not escaped:
+            in_string = not in_string
+        elif in_string:
+            if char == '\\':
+                escaped = not escaped
+            else:
+                escaped = False
+        else:
+            if char in ['{', '[']:
+                new_stack.append(char)
+            elif char in ['}', ']']:
+                if new_stack:
+                    new_stack.pop()
+                    
+    for sym in reversed(new_stack):
+        if sym == '{':
+            reconstructed += '}'
+        elif sym == '[':
+            reconstructed += ']'
+            
+    return reconstructed
+
+
+def extract_recommendations_and_assignments(content: str) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    content = content.strip()
+    
+    # Strip markdown wrapper if present
+    if content.startswith("```"):
+        content = re.sub(r"^```json\s*", "", content)
+        content = re.sub(r"```$", "", content).strip()
+        
+    content = escape_raw_control_chars_in_json_strings(content)
+    # Remove trailing commas from objects/arrays
+    content = re.sub(r',\s*([\]}])', r'\1', content)
+    
+    try:
+        data = json.loads(content)
+        return data.get("recommendations", []), data.get("assignments", {})
+    except Exception as e:
+        logger.warning(f"Direct JSON parsing failed: {e}. Attempting robust recovery...")
+        
+    try:
+        repaired_content = repair_truncated_json(content)
+        data = json.loads(repaired_content)
+        return data.get("recommendations", []), data.get("assignments", {})
+    except Exception as e:
+        logger.warning(f"Repaired JSON parsing failed: {e}. Falling back to regex extraction...")
+        
+    recommendations = []
+    brace_matches = []
+    stack = []
+    for i, char in enumerate(content):
+        if char == '{':
+            stack.append(i)
+        elif char == '}':
+            if stack:
+                start = stack.pop()
+                brace_matches.append(content[start:i+1])
+                
+    for block in brace_matches:
+        try:
+            block_clean = re.sub(r',\s*([\]}])', r'\1', block)
+            item = json.loads(block_clean)
+            if "cluster_id" in item and "playlist_name" in item:
+                recommendations.append(item)
+        except Exception:
+            continue
+            
+    assignments = {}
+    assignment_matches = re.finditer(r'["\']([^"\']+)["\']\s*:\s*(\d+)', content)
+    for m in assignment_matches:
+        key = m.group(1)
+        val = int(m.group(2))
+        if key not in ["cluster_id", "recommendations", "assignments", "playlist_name", "description", "vibe_explanation"]:
+            assignments[key] = val
+            
+    return recommendations, assignments
+
+
 class LlmSemanticSplitter(BaseVibeSplitter):
     @property
     def name(self) -> str:
@@ -108,10 +261,7 @@ class LlmSemanticSplitter(BaseVibeSplitter):
         provider, actual_model, api_base, api_key, has_llm_key = resolve_llm_config()
         
         if not litellm or not has_llm_key:
-            logger.warning("LiteLLM is not configured/active. Falling back to KMeans for LLM Semantic algorithm.")
-            from .algorithms import KMeansSplitter
-            fallback = KMeansSplitter()
-            return fallback.split(tracks_df, features_df, X_scaled, k, context)
+            raise LlmSplitterError("LiteLLM is not configured or LLM API keys/credentials are missing.")
             
         prompt_tracks = []
         for idx, (_, row) in enumerate(tracks_df.iterrows()):
@@ -130,8 +280,9 @@ class LlmSemanticSplitter(BaseVibeSplitter):
             
             track_features = features_df.loc[track_id] if track_id in features_df.index else {}
             
+            # Use short index string (0, 1, 2...) as ID to save context/output token budget
             prompt_tracks.append({
-                "id": track_id,
+                "id": str(idx),
                 "name": row["name"],
                 "artists": artists_str,
                 "genres": track_genres[:3],
@@ -160,15 +311,26 @@ class LlmSemanticSplitter(BaseVibeSplitter):
             return cluster_labels, x_coords, y_coords, recommendations
             
         logger.info(f"LLM Semantic Split cache miss. Contacting LiteLLM ({actual_model})...")
+        
+        # Format tracks list as compact CSV string to save context tokens and fit local model limits
+        csv_lines = ["id,name,artists,genres,tempo,energy,valence,acousticness"]
+        for t in prompt_tracks:
+            # Escape double quotes by doubling them as per standard CSV rules
+            name_esc = t["name"].replace('"', '""')
+            art_esc = t["artists"].replace('"', '""')
+            genres_esc = ",".join(t["genres"]).replace('"', '""')
+            csv_lines.append(f'{t["id"]},"{name_esc}","{art_esc}","{genres_esc}",{t["tempo"]},{t["energy"]:.2f},{t["valence"]:.2f},{t["acousticness"]:.2f}')
+        tracks_csv_str = "\n".join(csv_lines)
+
         prompt = f"""
-You are a professional music curator. I have a list of Spotify tracks from a playlist.
+You are a professional music curator. I have a CSV list of Spotify tracks from a playlist.
 Please group these {num_tracks} tracks into exactly {k} distinct "vibe" categories (clusters labeled 0 to {k-1}).
 Ensure all tracks are assigned to a cluster.
 
-Tracks:
-{json.dumps(prompt_tracks, indent=2)}
+Tracks CSV:
+{tracks_csv_str}
 
-For each cluster, create a unique and creative playlist name, a short description (1-2 sentences), and a detailed explanation of the vibe.
+For each cluster, create a unique and creative playlist name, a short description (exactly 1 sentence), and a brief explanation of the vibe (at most 2 sentences). Keep descriptions and explanations highly concise to prevent output truncation.
 
 Format your response as a JSON object matching this schema exactly:
 {{
@@ -177,23 +339,30 @@ Format your response as a JSON object matching this schema exactly:
       "cluster_id": 0,
       "playlist_name": "Creative Vibe Name",
       "description": "Short description.",
-      "vibe_explanation": "Detailed explanation."
+      "vibe_explanation": "Brief explanation."
     }},
     ...
   ],
   "assignments": {{
-    "track_id_1": 0,
-    "track_id_2": 1,
+    "0": 0,
+    "1": 0,
+    "2": 1,
+    "3": 2,
+    "4": 1,
+    "5": 0,
     ...
   }}
 }}
 Ensure the output is valid JSON and nothing else. Do not wrap in markdown code blocks.
+CRITICAL: The cluster assignments must only map tracks to one of the {k} cluster IDs (integers from 0 to {k-1}). Do NOT assign each track to its own unique cluster. Multiple tracks MUST be grouped together into the same cluster ID.
+IMPORTANT: Inside the JSON string values (playlist_name, description, vibe_explanation), NEVER use double quotes ("). If you need to quote something, use single quotes (') instead. Double quotes inside string values will break the JSON parser.
 """
 
         completion_kwargs = {
             "model": actual_model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
+            "max_tokens": 4096,
         }
         if api_base:
             completion_kwargs["api_base"] = api_base
@@ -210,18 +379,23 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
                 response = litellm.completion(**completion_kwargs)
                 
             content = response.choices[0].message.content
-            if content.startswith("```"):
-                content = re.sub(r"^```json\s*", "", content)
-                content = re.sub(r"```$", "", content).strip()
-                
-            data = json.loads(content)
-            recommendations = data.get("recommendations", [])
-            assignments = data.get("assignments", {})
             
+            # Robust extract of recommendations and assignments (recovers from truncation/control characters)
+            recommendations, assignments = extract_recommendations_and_assignments(content)
+            
+            if not recommendations or not assignments:
+                # Log the content for debugging
+                logger.error(f"Failed to extract recommendations or assignments. Raw LLM content: {content[:1000]}...")
+                raise LlmSplitterError("Failed to parse valid recommendations or assignments from LLM response.")
+                
             cluster_labels = np.zeros(num_tracks, dtype=int)
             for idx, (_, row) in enumerate(tracks_df.iterrows()):
-                tid = row["id"]
-                cluster_labels[idx] = int(assignments.get(tid, 0))
+                # Match short ID assignment
+                cid = int(assignments.get(str(idx), 0))
+                # Clamp to [0, k-1] to prevent out of bounds vibes
+                if cid < 0 or cid >= k:
+                    cid = 0
+                cluster_labels[idx] = cid
                 
             x_coords, y_coords = compute_pca_coords(X_scaled)
             
@@ -240,7 +414,6 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
             return cluster_labels, x_coords, y_coords, recommendations
             
         except Exception as e:
-            logger.error(f"LiteLLM Semantic Split failed: {str(e)}. Falling back to KMeans.")
-            from .algorithms import KMeansSplitter
-            fallback = KMeansSplitter()
-            return fallback.split(tracks_df, features_df, X_scaled, k, context)
+            if isinstance(e, LlmSplitterError):
+                raise e
+            raise LlmSplitterError(f"LiteLLM Semantic Split completion failed: {str(e)}")

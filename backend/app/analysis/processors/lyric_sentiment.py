@@ -248,11 +248,26 @@ Ensure the output is valid JSON and nothing else. Do not wrap in markdown code b
                 response = litellm.completion(**completion_kwargs)
 
             content = response.choices[0].message.content
+            content = content.strip()
             if content.startswith("```"):
                 content = re.sub(r"^```json\s*", "", content)
                 content = re.sub(r"```$", "", content).strip()
 
-            data = json.loads(content)
+            from app.analysis.processors.vibe_splitters.llm import (
+                escape_raw_control_chars_in_json_strings,
+                repair_truncated_json
+            )
+            content = escape_raw_control_chars_in_json_strings(content)
+            # Remove trailing commas
+            content = re.sub(r',\s*([\]}])', r'\1', content)
+
+            try:
+                data = json.loads(content)
+            except Exception as parse_err:
+                logger.warning(f"Lyric sentiment direct JSON parse failed: {parse_err}. Attempting repair...")
+                repaired = repair_truncated_json(content)
+                data = json.loads(repaired)
+
             return {
                 "mood": data.get("mood", "unknown").lower(),
                 "sentiment_score": float(data.get("sentiment_score", 0.0)),

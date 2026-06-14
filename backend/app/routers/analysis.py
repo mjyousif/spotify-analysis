@@ -11,6 +11,7 @@ from app.services.spotify import (
     SpotifyAPIError
 )
 from app.analysis.pipeline import create_default_pipeline, create_clustering_pipeline
+from app.analysis.processors.vibe_splitters.llm import LlmSplitterError
 
 try:
     import litellm
@@ -70,6 +71,9 @@ def analyze_playlist(
 
         return result
         
+    except LlmSplitterError as e:
+        logger.error(f"LLM Splitter error during analysis of {playlist_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"AI Semantic Split failed: {str(e)}")
     except SpotifyAPIError as e:
         logger.error(f"Spotify API error during analysis of {playlist_id}: {e.message}")
         raise HTTPException(status_code=e.status_code, detail=e.message)
@@ -124,6 +128,9 @@ def get_playlist_recommendations(
             "llm_provider": result.get("llm_provider", "none"),
             "llm_model": result.get("llm_model", "none")
         }
+    except LlmSplitterError as e:
+        logger.error(f"LLM Splitter error during recommendations of {playlist_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"AI Semantic Split failed: {str(e)}")
     except SpotifyAPIError as e:
         logger.error(f"Spotify API error during recommendations of {playlist_id}: {e.message}")
         raise HTTPException(status_code=e.status_code, detail=e.message)

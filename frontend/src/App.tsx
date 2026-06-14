@@ -17,6 +17,7 @@ import { AnalysisControls } from './components/Dashboard/AnalysisControls';
 import { TrackDetailsPlayer } from './components/Dashboard/TrackDetailsPlayer';
 import { ExportSuccessModal } from './components/Dashboard/ExportSuccessModal';
 import { DocumentationModal } from './components/Dashboard/DocumentationModal';
+import { LlmErrorModal } from './components/Dashboard/LlmErrorModal';
 
 const LyricSentimentWidget = React.lazy(() =>
   import('./components/Dashboard/LyricSentimentWidget').then(m => ({
@@ -48,6 +49,7 @@ function App() {
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [llmError, setLlmError] = useState<string | null>(null);
   const [recommendationsLoading, setRecommendationsLoading] = useState<boolean>(false);
   const activePlaylistIdRef = useRef<string | null>(null);
 
@@ -115,6 +117,7 @@ function App() {
     customPopularityWeight?: number,
     customLyricsWeight?: number
   ) => {
+    let isSwitching = false;
     activePlaylistIdRef.current = playlistId;
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
@@ -177,10 +180,20 @@ function App() {
       .catch(err => {
         if (activePlaylistIdRef.current !== playlistId) return;
         console.error(err);
-        setAnalysisError(err.response?.data?.detail || err.message || "Failed to analyze playlist.");
+        
+        const errMsg = err.response?.data?.detail || err.message || "Failed to analyze playlist.";
+        
+        if (algoToUse === 'llm_semantic' && (errMsg.includes("AI Semantic Split failed") || errMsg.includes("LlmSplitterError") || errMsg.includes("LiteLLM is not configured"))) {
+          isSwitching = true;
+          setLlmError(errMsg);
+          setAlgorithm('kmeans');
+          handleRunAnalysis(playlistId, customK, 'kmeans', gWeight, eWeight, pWeight, lWeight);
+        } else {
+          setAnalysisError(errMsg);
+        }
       })
       .finally(() => {
-        if (activePlaylistIdRef.current === playlistId) {
+        if (activePlaylistIdRef.current === playlistId && !isSwitching) {
           setAnalysisLoading(false);
         }
       });
@@ -402,6 +415,14 @@ function App() {
         initialKey={docModalKey}
         onApplySetting={handleApplySetting}
       />
+
+      {/* AI Semantic Split Error Modal */}
+      {llmError && (
+        <LlmErrorModal
+          error={llmError}
+          onClose={() => setLlmError(null)}
+        />
+      )}
     </Layout>
   );
 }
