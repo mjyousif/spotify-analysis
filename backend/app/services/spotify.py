@@ -208,3 +208,28 @@ def add_tracks_to_playlist(access_token: str, playlist_id: str, track_uris: List
             headers=headers,
             json=payload
         )
+
+def search_public_playlists(access_token: str, query: str, offset: int = 0) -> Dict[str, Any]:
+    """Searches for public playlists globally using Spotify's Search API."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{SPOTIFY_API_URL}/search"
+    params = {
+        "q": query,
+        "type": "playlist",
+        "limit": 20,
+        "offset": offset
+    }
+    response = make_spotify_request("GET", url, headers=headers, params=params)
+    data = response.json()
+    return data.get("playlists", {})
+
+def get_playlist_details(access_token: str, playlist_id: str) -> Dict[str, Any]:
+    """Fetches key metadata details for a specific playlist."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = make_spotify_request(
+        "GET", 
+        f"{SPOTIFY_API_URL}/playlists/{playlist_id}?fields=id,name,description,images,tracks(total),owner(display_name)",
+        headers=headers
+    )
+    return response.json()
+

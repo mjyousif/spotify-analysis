@@ -148,11 +148,27 @@ export interface PlaylistInfo {
   owner: { display_name: string };
 }
 
+export interface SearchPlaylistsResponse {
+  playlists: PlaylistInfo[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
 export const apiService = {
   async getPlaylists(): Promise<PlaylistInfo[]> {
     const response = await api.get<{ playlists: PlaylistInfo[] }>('/api/playlists');
     return response.data.playlists;
   },
+
+  async searchPlaylists(query: string, offset = 0): Promise<SearchPlaylistsResponse> {
+    const response = await api.get<SearchPlaylistsResponse>('/api/playlists/search', {
+      params: { q: query, offset }
+    });
+    return response.data;
+  },
+
 
   async getLlmConfig(): Promise<LlmConfigResponse> {
     const response = await api.get<LlmConfigResponse>('/api/config/llm');
