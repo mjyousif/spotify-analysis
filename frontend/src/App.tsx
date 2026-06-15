@@ -19,6 +19,8 @@ import { ExportSuccessModal } from './components/Dashboard/ExportSuccessModal';
 import { DocumentationModal } from './components/Dashboard/DocumentationModal';
 import { LlmErrorModal } from './components/Dashboard/LlmErrorModal';
 import { ExcludedTracksAlert } from './components/Dashboard/ExcludedTracksAlert';
+import { AnalysisProgressPanel } from './components/Dashboard/AnalysisProgressPanel';
+import type { ProgressState } from './components/Dashboard/AnalysisProgressPanel';
 
 const LyricSentimentWidget = React.lazy(() =>
   import('./components/Dashboard/LyricSentimentWidget').then(m => ({
@@ -49,6 +51,12 @@ function App() {
   >('kmeans');
   const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState<boolean>(false);
+  const [analysisProgress, setAnalysisProgress] = useState<ProgressState>({
+    stage: 'initializing',
+    message: 'Starting playlist analysis...',
+    step: 0,
+    totalSteps: 6,
+  });
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
   const [recommendationsLoading, setRecommendationsLoading] = useState<boolean>(false);
@@ -124,6 +132,12 @@ function App() {
     activePlaylistIdRef.current = playlistId;
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
+    setAnalysisProgress({
+      stage: 'initializing',
+      message: 'Initializing analysis...',
+      step: 0,
+      totalSteps: 6,
+    });
     setAnalysisError(null);
     setExportedPlaylists(null);
     setSelectedTrack(null);
@@ -136,8 +150,21 @@ function App() {
     const lWeight = customLyricsWeight !== undefined ? customLyricsWeight : lyricsWeight;
     const lStrategy = customLyricsStrategy !== undefined ? customLyricsStrategy : lyricsStrategy;
 
-    apiService.analyzePlaylist(playlistId, customK, algoToUse, gWeight, eWeight, pWeight, lWeight, false, lStrategy)
-      .then(data => {
+    apiService.streamAnalysis(
+      playlistId,
+      customK,
+      algoToUse,
+      gWeight,
+      eWeight,
+      pWeight,
+      lWeight,
+      false, // includeLlm
+      lStrategy,
+      (progressEvent) => {
+        if (activePlaylistIdRef.current !== playlistId) return;
+        setAnalysisProgress(progressEvent);
+      },
+      (data) => {
         if (activePlaylistIdRef.current !== playlistId) return;
 
         setAnalysisData(data);
@@ -155,8 +182,17 @@ function App() {
         // If recommendations are already returned (e.g. from LLM Semantic Splitter or cache)
         if (data.recommendations && data.recommendations.length > 0) {
           setRecommendationsLoading(false);
+          setAnalysisLoading(false);
         } else {
           setRecommendationsLoading(true);
+          // Transition progress bar to showing the AI recommender step while loading recommendations
+          setAnalysisProgress({
+            stage: 'recommendations',
+            message: 'Generating AI vibe recommendations...',
+            step: 6,
+            totalSteps: 6,
+          });
+
           apiService.getRecommendations(playlistId, resolvedK, algoToUse, gWeight, eWeight, pWeight, lWeight, lStrategy)
             .then(recData => {
               if (activePlaylistIdRef.current !== playlistId) return;
@@ -177,16 +213,17 @@ function App() {
             .finally(() => {
               if (activePlaylistIdRef.current === playlistId) {
                 setRecommendationsLoading(false);
+                setAnalysisLoading(false);
               }
             });
         }
-      })
-      .catch(err => {
+      },
+      (err) => {
         if (activePlaylistIdRef.current !== playlistId) return;
-        console.error(err);
-        
-        const errMsg = err.response?.data?.detail || err.message || "Failed to analyze playlist.";
-        
+        console.error("Analysis stream error:", err);
+
+        const errMsg = err.message || err.detail || "Failed to analyze playlist.";
+
         if (algoToUse === 'llm_semantic' && (errMsg.includes("AI Semantic Split failed") || errMsg.includes("LlmSplitterError") || errMsg.includes("LiteLLM is not configured"))) {
           isSwitching = true;
           setLlmError(errMsg);
@@ -194,13 +231,15 @@ function App() {
           handleRunAnalysis(playlistId, customK, 'kmeans', gWeight, eWeight, pWeight, lWeight);
         } else {
           setAnalysisError(errMsg);
-        }
-      })
-      .finally(() => {
-        if (activePlaylistIdRef.current === playlistId && !isSwitching) {
           setAnalysisLoading(false);
         }
-      });
+      }
+    ).catch(err => {
+      if (activePlaylistIdRef.current !== playlistId) return;
+      console.error("Outer analysis error:", err);
+      setAnalysisError(err.message || "An unexpected error occurred.");
+      setAnalysisLoading(false);
+    });
   };
 
   // useCallback with [] so this function reference NEVER changes across re-renders.
@@ -294,15 +333,8 @@ function App() {
 
       {/* Main Analysis Screen */}
       {analysisLoading ? (
-        <div className="flex flex-col items-center justify-center py-24 space-y-4">
-          <div className="relative w-16 h-16 flex items-center justify-center">
-            <div className="absolute inset-0 border-4 border-violet-500/20 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <div>
-            <h3 className="text-white font-bold text-lg">Running Clustering Engine</h3>
-            <p className="text-xs text-gray-550 mt-1 animate-pulse">Fetching track audio features & consulting LLM...</p>
-          </div>
+        <div className="flex flex-col items-center justify-center py-24">
+          <AnalysisProgressPanel progress={analysisProgress} />
         </div>
       ) : analysisError ? (
         <div className="max-w-md mx-auto text-center py-16 bg-red-950/10 border border-red-900/30 rounded-2xl p-6">

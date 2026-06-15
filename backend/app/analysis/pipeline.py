@@ -1,12 +1,13 @@
 import pandas as pd
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Callable
 from app.services.spotify import get_artists_genres
 from app.services.reccobeats import get_tracks_audio_features
 from app.analysis.processors.base import BaseAnalysisProcessor
 from app.analysis.processors.clustering import VibeClusteringProcessor
 from app.analysis.processors.llm_recommender import LLMRecommendationProcessor
 from app.analysis.processors.lyric_sentiment import LyricSentimentProcessor
+from app.analysis.timing import AnalysisTimer, log_timing_summary
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -27,11 +28,15 @@ class AnalysisPipeline:
         era_weight: float = 0.0,
         popularity_weight: float = 0.0,
         lyrics_weight: float = 0.0,
-        lyrics_strategy: str = "spotify_model"
+        lyrics_strategy: str = "spotify_model",
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        playlist_id: str = "",
     ) -> Dict[str, Any]:
         """
         Gathers raw data, builds DataFrames, runs all processors, 
         and packages the final payload.
+        
+        progress_callback: optional callable(event_dict) emitted at each major stage.
         """
         if not tracks:
             return {
@@ -39,36 +44,62 @@ class AnalysisPipeline:
                 "clusters": [],
                 "recommendations": []
             }
-            
+
+        n_tracks = len(tracks)
+        timings: Dict = {}  # shared timing registry
+
         logger.info(
-            f"Running analysis pipeline on {len(tracks)} tracks with k={k}, algorithm={algorithm}, "
+            f"━━━ Analysis pipeline starting ━━━  playlist={playlist_id or 'unknown'}, "
+            f"tracks={n_tracks}, algorithm={algorithm}, k={k}, "
             f"genre_weight={genre_weight}, era_weight={era_weight}, "
-            f"popularity_weight={popularity_weight}, lyrics_weight={lyrics_weight}, strategy={lyrics_strategy}"
+            f"popularity_weight={popularity_weight}, lyrics_weight={lyrics_weight}, "
+            f"strategy={lyrics_strategy}"
         )
-        
-        # 1. Fetch artist details (genres) from Spotify
+            
+        # ── 1. Fetch artist genres ────────────────────────────────────────────────
+        if progress_callback:
+            progress_callback({
+                "type": "progress",
+                "stage": "artist_genres",
+                "message": f"Fetching artist genre data for {n_tracks} tracks...",
+                "step": 1,
+                "total_steps": 6,
+            })
+
         artist_ids = set()
         for track in tracks:
             for artist in track.get("artists", []):
                 if artist.get("id"):
                     artist_ids.add(artist["id"])
+
+        with AnalysisTimer("artist_genres", timings):
+            try:
+                genres_map = get_artists_genres(access_token, list(artist_ids))
+                logger.info(f"[1/6] Artist genres fetched for {len(genres_map)} artists.")
+            except Exception as e:
+                logger.error(f"[1/6] Failed to fetch artist genres: {str(e)}")
+                genres_map = {}
                     
-        # Retrieve genres from Spotify API
-        try:
-            genres_map = get_artists_genres(access_token, list(artist_ids))
-        except Exception as e:
-            logger.error(f"Failed to fetch artist genres: {str(e)}")
-            genres_map = {}
-            
-        # 2. Fetch audio features from ReccoBeats
+        # ── 2. Fetch audio features ───────────────────────────────────────────────
+        if progress_callback:
+            progress_callback({
+                "type": "progress",
+                "stage": "audio_features",
+                "message": f"Fetching audio features for {n_tracks} tracks from ReccoBeats...",
+                "step": 2,
+                "total_steps": 6,
+            })
+
         track_ids = [t["id"] for t in tracks if t.get("id")]
-        try:
-            features_map = get_tracks_audio_features(track_ids)
-        except Exception as e:
-            logger.error(f"Failed to fetch audio features: {str(e)}")
-            features_map = {}
-            
-        # 3. Build features list and filter out tracks without features
+        with AnalysisTimer("audio_features", timings):
+            try:
+                features_map = get_tracks_audio_features(track_ids)
+                logger.info(f"[2/6] Audio features fetched for {len(features_map)}/{n_tracks} tracks.")
+            except Exception as e:
+                logger.error(f"[2/6] Failed to fetch audio features: {str(e)}")
+                features_map = {}
+                    
+        # ── 3. Build feature list & filter tracks missing audio data ──────────────
         features_list = []
         valid_track_ids = []
         excluded_tracks = []
@@ -87,9 +118,11 @@ class AnalysisPipeline:
                     "artists": ", ".join([a.get("name", "") for a in t.get("artists", [])]) if isinstance(t.get("artists"), list) else "",
                     "reason": "Acoustic audio features could not be retrieved from ReccoBeats"
                 })
-                logger.warning(f"Excluding track '{t.get('name')}' ({tid}) - audio features missing from ReccoBeats.")
+                logger.warning(f"Excluding track '{t.get('name')}' ({tid}) — audio features missing from ReccoBeats.")
+
+        if excluded_tracks:
+            logger.info(f"{len(excluded_tracks)} tracks excluded (no audio features). {len(valid_track_ids)} remain.")
                 
-        # Re-build tracks list and tracks_df for remaining valid tracks
         valid_tracks = [t for t in tracks if t.get("id") in valid_track_ids]
         if not valid_tracks:
             return {
@@ -97,7 +130,7 @@ class AnalysisPipeline:
                 "clusters": [],
                 "recommendations": [],
                 "excluded_tracks": excluded_tracks,
-                "message": "All tracks in the playlist were excluded because their audio features could not be retrieved."
+                "message": "All tracks in the playlist were excluded because their audio features could not be retrieved.",
             }
             
         tracks_df = pd.DataFrame(valid_tracks)
@@ -129,7 +162,7 @@ class AnalysisPipeline:
                 }
             })
 
-        # 5. Initialize Context for processors
+        # ── 5. Initialize Context for processors ─────────────────────────────────
         context = {
             "k": k,
             "algorithm": algorithm,
@@ -141,18 +174,23 @@ class AnalysisPipeline:
             "lyrics_weight": lyrics_weight,
             "lyrics_strategy": lyrics_strategy,
             "processed_tracks": pre_processed_tracks,
+            "progress_callback": progress_callback,
+            "timings": timings,
         }
         
-        # 6. Run all registered processors
+        # ── 6. Run all registered processors ─────────────────────────────────────
         payload = {"excluded_tracks": excluded_tracks}
         for processor in self.processors:
-            try:
-                result = processor.process(tracks_df, features_df, context)
-                if result:
-                    payload.update(result)
-            except Exception as e:
-                logger.error(f"Processor {processor.__class__.__name__} failed: {str(e)}")
-                raise e
+            proc_name = processor.__class__.__name__
+            logger.info(f"Running processor: {proc_name}")
+            with AnalysisTimer(f"processor_{proc_name}", timings):
+                try:
+                    result = processor.process(tracks_df, features_df, context)
+                    if result:
+                        payload.update(result)
+                except Exception as e:
+                    logger.error(f"Processor {proc_name} failed: {str(e)}")
+                    raise e
 
             # After LyricSentimentProcessor: if lyrics influence the clustering,
             # exclude tracks whose lyrics couldn't be fetched (not instrumental, empty text).
@@ -167,7 +205,6 @@ class AnalysisPipeline:
 
                 if lyrics_missing_ids:
                     for tid in lyrics_missing_ids:
-                        # Find the original track metadata for the exclusion record
                         track_meta = next((t for t in valid_tracks if t.get("id") == tid), None)
                         name = track_meta.get("name") if track_meta else tid
                         artists_str = (
@@ -186,19 +223,13 @@ class AnalysisPipeline:
                             "reason": reason
                         })
                         logger.warning(
-                            f"Excluding track '{name}' ({tid}) - {reason.lower()} (lyrics_weight={lyrics_weight})."
+                            f"Excluding track '{name}' ({tid}) — {reason.lower()} (lyrics_weight={lyrics_weight})."
                         )
 
-                    # Sync payload's excluded_tracks list
                     payload["excluded_tracks"] = excluded_tracks
 
-                    # Filter tracks_df and features_df
                     tracks_df = tracks_df[~tracks_df["id"].isin(lyrics_missing_ids)].reset_index(drop=True)
-                    # features_df is indexed by ReccoBeats internal IDs, not Spotify IDs;
-                    # use the stamped spotify_id column to filter correctly.
                     features_df = features_df[~features_df["spotify_id"].isin(lyrics_missing_ids)]
-
-                    # Filter context processed_tracks
                     context["processed_tracks"] = [
                         pt for pt in context["processed_tracks"]
                         if pt["id"] not in lyrics_missing_ids
@@ -208,6 +239,10 @@ class AnalysisPipeline:
                         f"Excluded {len(lyrics_missing_ids)} tracks due to missing lyrics. "
                         f"{len(tracks_df)} tracks remain for clustering."
                     )
+
+        # ── 7. Timing summary ─────────────────────────────────────────────────────
+        log_timing_summary(timings, playlist_id=playlist_id)
+        logger.info("━━━ Analysis pipeline complete ━━━")
 
         return payload
 
@@ -226,4 +261,3 @@ def create_default_pipeline() -> AnalysisPipeline:
     pipeline.register_processor(VibeClusteringProcessor())
     pipeline.register_processor(LLMRecommendationProcessor())
     return pipeline
-

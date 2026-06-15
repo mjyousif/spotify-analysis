@@ -2,8 +2,10 @@ import logging
 import os
 import re
 import json
+import queue
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from app.routers.auth import get_spotify_token
 from app.services.spotify import (
     get_playlist_tracks, 
@@ -22,6 +24,170 @@ logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/api/analysis", tags=["Analysis"])
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SSE helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _sse_event(data: dict) -> str:
+    """Format a dict as an SSE data line."""
+    return f"data: {json.dumps(data)}\n\n"
+
+
+def _run_pipeline_streaming(
+    token: str,
+    playlist_id: str,
+    tracks,
+    k,
+    algorithm,
+    genre_weight,
+    era_weight,
+    popularity_weight,
+    lyrics_weight,
+    lyrics_strategy,
+    include_llm,
+    event_queue: "queue.Queue",
+):
+    """
+    Runs the analysis pipeline in the current thread, pushing SSE events into
+    event_queue as stages complete. Pushes a sentinel None when done.
+    """
+    def progress_callback(event: dict):
+        event_queue.put(event)
+
+    try:
+        if include_llm:
+            pipeline = create_default_pipeline()
+        else:
+            pipeline = create_clustering_pipeline(lyrics_weight=lyrics_weight)
+
+        result = pipeline.run(
+            token,
+            tracks,
+            k,
+            algorithm,
+            genre_weight=genre_weight,
+            era_weight=era_weight,
+            popularity_weight=popularity_weight,
+            lyrics_weight=lyrics_weight,
+            lyrics_strategy=lyrics_strategy,
+            progress_callback=progress_callback,
+            playlist_id=playlist_id,
+        )
+
+        if "recommendations" not in result:
+            result["recommendations"] = []
+
+        event_queue.put({"type": "complete", "data": result})
+
+    except LlmSplitterError as e:
+        logger.error(f"LLM Splitter error during streaming analysis of {playlist_id}: {str(e)}")
+        event_queue.put({"type": "error", "code": "llm_splitter_error", "message": str(e)})
+    except SpotifyAPIError as e:
+        logger.error(f"Spotify API error during streaming analysis of {playlist_id}: {e.message}")
+        event_queue.put({"type": "error", "code": "spotify_error", "message": e.message})
+    except Exception as e:
+        logger.error(f"Error during streaming analysis of {playlist_id}: {str(e)}")
+        event_queue.put({"type": "error", "code": "pipeline_error", "message": str(e)})
+    finally:
+        event_queue.put(None)  # sentinel → generator exits
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Streaming analysis endpoint (replaces the old synchronous one)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/playlist/{playlist_id}/stream")
+def stream_analyze_playlist(
+    playlist_id: str,
+    k: int = Query(None, description="Number of clusters/vibe splits to create", ge=1, le=10),
+    algorithm: str = Query("kmeans", description="Clustering algorithm to use"),
+    genre_weight: float = Query(0.0, description="Weight of artist genres", ge=0.0, le=5.0),
+    era_weight: float = Query(0.0, description="Weight of release decade/year", ge=0.0, le=5.0),
+    popularity_weight: float = Query(0.0, description="Weight of track popularity", ge=0.0, le=5.0),
+    lyrics_weight: float = Query(0.0, description="Weight of lyrics sentiment", ge=0.0, le=5.0),
+    lyrics_strategy: str = Query("spotify_model", description="Lyrical analysis strategy to use"),
+    include_llm: bool = Query(False, description="Whether to run LLM recommendation processor"),
+    token: str = Depends(get_spotify_token)
+):
+    """
+    Streams the analysis pipeline as Server-Sent Events (SSE).
+
+    Each event is a JSON object on a ``data:`` line:
+      - ``{"type": "progress", "stage": "...", "message": "...", "step": N, "total_steps": 6, ...}``
+      - ``{"type": "complete", "data": { ...AnalysisResponse... }}``
+      - ``{"type": "error",    "code": "...", "message": "..."}``
+
+    The client should replace this endpoint wherever the old synchronous
+    ``GET /api/analysis/playlist/{id}`` was previously used.
+    """
+    import threading
+
+    # 1. Fetch track list first (fast, usually cached)
+    try:
+        tracks = get_playlist_tracks(token, playlist_id)
+    except SpotifyAPIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tracks: {str(e)}")
+
+    if not tracks:
+        # Return a single complete event for empty playlists
+        def _empty():
+            yield _sse_event({
+                "type": "complete",
+                "data": {"tracks": [], "clusters": [], "recommendations": [],
+                         "message": "Playlist is empty or contains unsupported items."}
+            })
+        return StreamingResponse(_empty(), media_type="text/event-stream")
+
+    n_tracks = len(tracks)
+    event_queue: queue.Queue = queue.Queue()
+
+    # 2. Kick off the pipeline in a background thread
+    thread = threading.Thread(
+        target=_run_pipeline_streaming,
+        args=(
+            token, playlist_id, tracks,
+            k, algorithm,
+            genre_weight, era_weight, popularity_weight, lyrics_weight, lyrics_strategy,
+            include_llm, event_queue,
+        ),
+        daemon=True,
+    )
+    thread.start()
+
+    # 3. Immediately emit an "initializing" event so the client knows we started
+    def generate():
+        # Emit initial event before pipeline even starts
+        yield _sse_event({
+            "type": "progress",
+            "stage": "initializing",
+            "message": f"Starting analysis for {n_tracks} tracks...",
+            "step": 0,
+            "total_steps": 6,
+        })
+
+        while True:
+            event = event_queue.get()
+            if event is None:
+                break  # pipeline thread finished
+            yield _sse_event(event)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Keep the old synchronous endpoint for backward compatibility / direct calls
+# ─────────────────────────────────────────────────────────────────────────────
+
 @router.get("/playlist/{playlist_id}")
 def analyze_playlist(
     playlist_id: str,
@@ -36,11 +202,9 @@ def analyze_playlist(
     token: str = Depends(get_spotify_token)
 ):
     """
-    Fetches tracks in a playlist, retrieves audio features, 
-    and returns cluster groupings, coordinates, and optional LLM vibe split recommendations.
+    Synchronous fallback. Prefer the /stream endpoint for progress reporting.
     """
     try:
-        # 1. Fetch tracks in the playlist
         tracks = get_playlist_tracks(token, playlist_id)
         if not tracks:
             return {
@@ -50,7 +214,6 @@ def analyze_playlist(
                 "message": "Playlist is empty or contains unsupported items."
             }
             
-        # 2. Run analysis pipeline
         if include_llm:
             pipeline = create_default_pipeline()
         else:
@@ -65,7 +228,8 @@ def analyze_playlist(
             era_weight=era_weight,
             popularity_weight=popularity_weight,
             lyrics_weight=lyrics_weight,
-            lyrics_strategy=lyrics_strategy
+            lyrics_strategy=lyrics_strategy,
+            playlist_id=playlist_id,
         )
 
         if "recommendations" not in result:
@@ -104,7 +268,6 @@ def get_playlist_recommendations(
     Uses cached track details and features, so it is fast except for the LLM call itself.
     """
     try:
-        # Fetch tracks from Spotify
         tracks = get_playlist_tracks(token, playlist_id)
         if not tracks:
             return {
@@ -124,7 +287,8 @@ def get_playlist_recommendations(
             era_weight=era_weight,
             popularity_weight=popularity_weight,
             lyrics_weight=lyrics_weight,
-            lyrics_strategy=lyrics_strategy
+            lyrics_strategy=lyrics_strategy,
+            playlist_id=playlist_id,
         )
         return {
             "recommendations": result.get("recommendations", []),
@@ -253,7 +417,6 @@ def analyze_playlist_lyrics(
     Runs batch lyrics sentiment analysis for the entire playlist and caches results.
     """
     try:
-        # Fetch tracks from Spotify
         tracks = get_playlist_tracks(token, playlist_id)
         if not tracks:
             return {
@@ -265,7 +428,6 @@ def analyze_playlist_lyrics(
                 }
             }
 
-        # Retrieve audio features
         from app.services.reccobeats import get_tracks_audio_features
         track_ids = [t["id"] for t in tracks if t.get("id")]
         try:
@@ -274,7 +436,6 @@ def analyze_playlist_lyrics(
             logger.error(f"Failed to fetch audio features: {str(e)}")
             features_map = {}
 
-        # Build artist genres details map
         artist_ids = set()
         for track in tracks:
             for artist in track.get("artists", []):
@@ -286,7 +447,6 @@ def analyze_playlist_lyrics(
             logger.error(f"Failed to fetch artist genres: {str(e)}")
             genres_map = {}
 
-        # Build features list and exclude tracks without features
         features_list = []
         valid_track_ids = []
         for track in tracks:
@@ -297,7 +457,7 @@ def analyze_playlist_lyrics(
                 features_list.append(features_map[tid])
                 valid_track_ids.append(tid)
             else:
-                logger.warning(f"Excluding track '{track.get('name')}' ({tid}) from lyrics analysis - audio features missing from ReccoBeats.")
+                logger.warning(f"Excluding track '{track.get('name')}' ({tid}) from lyrics analysis — audio features missing.")
         
         valid_tracks = [t for t in tracks if t.get("id") in valid_track_ids]
         if not valid_tracks:
@@ -314,16 +474,13 @@ def analyze_playlist_lyrics(
         features_df = pd.DataFrame(features_list)
         features_df.set_index("id", inplace=True)
 
-        # Pre-process tracks into structure required by LyricSentimentProcessor
         processed_tracks = []
         for pos, (_, row) in enumerate(tracks_df.iterrows()):
             track_id = row["id"]
             artist_list = row.get("artists", [])
             artists_str = ", ".join([a.get("name", "") for a in artist_list])
-            # Use iloc — features_df is indexed by ReccoBeats IDs, not Spotify IDs
             track_features = features_df.iloc[pos].to_dict() if pos < len(features_df) else {}
             
-            # Genres
             track_artist_ids = [a.get("id") for a in artist_list if a.get("id")]
             track_genres = []
             for aid in track_artist_ids:
@@ -345,7 +502,6 @@ def analyze_playlist_lyrics(
                 "genres": track_genres
             })
 
-
         context = {
             "processed_tracks": processed_tracks,
             "artist_genres": genres_map,
@@ -356,7 +512,6 @@ def analyze_playlist_lyrics(
         processor = LyricSentimentProcessor()
         result = processor.process(tracks_df, features_df, context)
         
-        # return the lyrics_analysis part of the result payload
         return result.get("lyrics_analysis", {
             "tracks": {},
             "playlist_sentiment": {

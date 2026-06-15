@@ -238,6 +238,94 @@ export const apiService = {
     return response.data;
   },
 
+  async streamAnalysis(
+    playlistId: string,
+    k?: number,
+    algorithm?: string,
+    genreWeight?: number,
+    eraWeight?: number,
+    popularityWeight?: number,
+    lyricsWeight?: number,
+    includeLlm?: boolean,
+    lyricsStrategy?: string,
+    onProgress?: (event: { stage: string; message: string; step: number; total_steps: number; current?: number; total?: number }) => void,
+    onComplete?: (data: AnalysisResponse) => void,
+    onError?: (error: any) => void
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    if (k !== undefined) params.append('k', k.toString());
+    if (algorithm !== undefined) params.append('algorithm', algorithm);
+    if (genreWeight !== undefined) params.append('genre_weight', genreWeight.toString());
+    if (eraWeight !== undefined) params.append('era_weight', eraWeight.toString());
+    if (popularityWeight !== undefined) params.append('popularity_weight', popularityWeight.toString());
+    if (lyricsWeight !== undefined) params.append('lyrics_weight', lyricsWeight.toString());
+    if (lyricsStrategy !== undefined) params.append('lyrics_strategy', lyricsStrategy);
+    if (includeLlm !== undefined) params.append('include_llm', includeLlm.toString());
+
+    const token = await spotifyAuth.getAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const url = `${API_BASE_URL}/api/analysis/playlist/${playlistId}/stream?${params.toString()}`;
+
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        const text = await response.text();
+        let errMsg = `Failed to connect: ${response.statusText}`;
+        try {
+          const errData = JSON.parse(text);
+          errMsg = errData.detail || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          const jsonStr = trimmed.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+            if (event.type === 'progress' && onProgress) {
+              onProgress(event);
+            } else if (event.type === 'complete' && onComplete) {
+              onComplete(event.data);
+            } else if (event.type === 'error' && onError) {
+              onError(event);
+            }
+          } catch (e) {
+            console.error("Failed to parse SSE event:", e, jsonStr);
+          }
+        }
+      }
+    } catch (err: any) {
+      if (onError) {
+        onError(err);
+      } else {
+        throw err;
+      }
+    }
+  },
+
   async getRecommendations(
     playlistId: string, 
     k?: number, 

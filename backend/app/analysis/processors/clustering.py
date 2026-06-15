@@ -1,9 +1,13 @@
+import logging
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from typing import Dict, Any, List
 from app.analysis.processors.base import BaseAnalysisProcessor
 from app.analysis.processors.vibe_splitters import get_vibe_splitter, compute_all_coords
+from app.analysis.timing import AnalysisTimer
+
+logger = logging.getLogger("uvicorn.error")
 
 def safe_float(val: Any, default: float) -> float:
     if val is None or pd.isna(val):
@@ -191,6 +195,8 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         # 3. Determine recommended and active K
         algorithm = context.get("algorithm", "kmeans")
         splitter = get_vibe_splitter(algorithm)
+        timings = context.get("timings")
+        progress_callback = context.get("progress_callback")
         recommended_k = splitter.get_recommended_k(X_scaled)
         
         context_k = context.get("k")
@@ -207,11 +213,27 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
             k = 1
         if k > num_tracks:
             k = num_tracks
+
+        logger.info(
+            f"VibeClusteringProcessor: Running '{algorithm}' on {num_tracks} tracks, "
+            f"k={k} (recommended_k={recommended_k}), "
+            f"feature_dims={X_scaled.shape[1]}."
+        )
+
+        if progress_callback:
+            progress_callback({
+                "type": "progress",
+                "stage": "clustering",
+                "message": f"Running {algorithm.upper()} clustering (k={k}) on {num_tracks} tracks...",
+                "step": 4,
+                "total_steps": 6,
+            })
         
         # 4. Perform Clustering / Vibe Splitting based on selected algorithm
-        cluster_labels, x_coords, y_coords, recommendations = splitter.split(
-            tracks_df, features_df, X_scaled, k, context
-        )
+        with AnalysisTimer(f"clustering_{algorithm}", timings):
+            cluster_labels, x_coords, y_coords, recommendations = splitter.split(
+                tracks_df, features_df, X_scaled, k, context
+            )
             
         # Update context so subsequent processors know the actual vibes count
         unique_labels = set(cluster_labels)
@@ -219,13 +241,28 @@ class VibeClusteringProcessor(BaseAnalysisProcessor):
         context["k"] = len(active_vibes)
         context["cluster_labels"] = cluster_labels
         context["llm_recommendations"] = recommendations
+
+        logger.info(
+            f"VibeClusteringProcessor: Clustering complete — "
+            f"{len(active_vibes)} vibes, {len([l for l in cluster_labels if l == -1])} outliers."
+        )
+
+        if progress_callback:
+            progress_callback({
+                "type": "progress",
+                "stage": "projections",
+                "message": "Computing dimensionality projections (PCA, t-SNE, UMAP, Circumplex)...",
+                "step": 5,
+                "total_steps": 6,
+            })
         
         # 5. Compute all dimensionality reduction coordinates for instant client-side toggles
         lyrics_strategy = context.get("lyrics_strategy", "spotify_model")
-        all_coords = compute_all_coords(
-            X_scaled, features_df, tracks_df, feature_cols,
-            lyrics_strategy=lyrics_strategy, lyrics_weight=lyrics_weight
-        )
+        with AnalysisTimer("projections", timings):
+            all_coords = compute_all_coords(
+                X_scaled, features_df, tracks_df, feature_cols,
+                lyrics_strategy=lyrics_strategy, lyrics_weight=lyrics_weight
+            )
             
         # 6. Merge results and format track list
         processed_tracks = []
