@@ -24,7 +24,8 @@ spotify-analysis/
 │   │   ├── config.py        # Settings loader
 │   │   ├── services/        # Third-party integrations (Spotify, ReccoBeats)
 │   │   └── analysis/        # Modular analysis engine & processors
-│   ├── requirements.txt     # Python dependencies
+│   ├── pyproject.toml       # Project metadata & dependencies
+│   ├── uv.lock              # Lockfile for deterministic builds
 │   ├── config.yaml          # LiteLLM configuration file
 │   └── .env                 # Environment secrets
 └── frontend/                # React (Vite + TS + Tailwind v4) Frontend
@@ -86,13 +87,10 @@ We recommend using **`uv`** (a fast Python package installer and runner) to inst
 
 ```bash
 cd backend
-# 1. Create a virtual environment
-uv venv
+# 1. Create virtual environment and install/sync dependencies
+uv sync
 
-# 2. Install dependencies
-uv pip install -r requirements.txt
-
-# 3. Start the FastAPI server (Port 8000)
+# 2. Start the FastAPI server (Port 8000)
 .venv\Scripts\uvicorn app.main:app --reload
 ```
 *Verify the backend is active at [http://localhost:8000/health](http://localhost:8000/health) or explore endpoints at [http://localhost:8000/docs](http://localhost:8000/docs).*

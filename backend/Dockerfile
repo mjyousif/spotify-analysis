@@ -15,10 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy dependencies configuration and install Python dependencies
+COPY pyproject.toml uv.lock ./
+RUN uv pip install --system --no-cache -r pyproject.toml
 
 # Copy the rest of the backend files
 COPY . .
