@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { TasteProfileWidget } from './TasteProfileWidget';
@@ -92,3 +91,4 @@ describe('TasteProfileWidget Component', () => {
     expect(pleaserSection?.querySelector('svg')).toBeInTheDocument();
   });
 });
+

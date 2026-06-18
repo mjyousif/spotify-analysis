@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { EraTimelineWidget } from './EraTimelineWidget';
@@ -72,3 +71,4 @@ describe('EraTimelineWidget Component', () => {
     expect(screen.getByText('Released: 2021')).toBeInTheDocument();
   });
 });
+

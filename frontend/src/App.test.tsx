@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import React from 'react';
 import App from './App';
 import { useSpotifyAuth } from './hooks/useSpotifyAuth';
 import { apiService } from './services/api';
@@ -185,7 +184,7 @@ describe('App Root Component', () => {
 
     // Mock streamAnalysis to immediately invoke the completion callback
     vi.mocked(apiService.streamAnalysis).mockImplementation(async (
-      id, k, algo, gw, ew, pw, lw, includeLlm, lStrategy, onProgress, onComplete, onError
+      _id, _k, _algo, _gw, _ew, _pw, _lw, _includeLlm, _lStrategy, onProgress, onComplete, _onError
     ) => {
       onProgress?.({ stage: 'processing', message: 'Analyzing...', step: 3, total_steps: 6 });
       onComplete?.(mockAnalysisResponse);
@@ -214,3 +213,4 @@ describe('App Root Component', () => {
     expect(screen.getAllByText('Split Rocker').length).toBeGreaterThan(0);
   });
 });
+

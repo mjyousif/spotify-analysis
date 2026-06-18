@@ -1,6 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import React from 'react';
 import { ScatterPlotWidget } from './ScatterPlotWidget';
 
 // Mock ResizeObserver
@@ -14,7 +13,7 @@ global.ResizeObserver = MockResizeObserver as any;
 // Declare mock functions inside vi.hoisted to prevent hoisting errors
 const { mockNewPlot, mockReact, mockPurge, getRegisteredClickHandler } = vi.hoisted(() => {
   let clickHandler: any;
-  const mockNewPlotFn = vi.fn().mockImplementation((el, data, layout, config) => {
+  const mockNewPlotFn = vi.fn().mockImplementation((el, _data, _layout, _config) => {
     el.on = vi.fn((event, handler) => {
       if (event === 'plotly_click') {
         clickHandler = handler;
@@ -371,3 +370,4 @@ describe('ScatterPlotWidget Component', () => {
     expect(mockPurge).toHaveBeenCalled();
   });
 });
+

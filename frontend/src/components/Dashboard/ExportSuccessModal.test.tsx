@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExportSuccessModal } from './ExportSuccessModal';
@@ -34,3 +33,4 @@ describe('ExportSuccessModal Component', () => {
     expect(mockClose).toHaveBeenCalled();
   });
 });
+

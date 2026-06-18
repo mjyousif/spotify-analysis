@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DocumentationModal } from './DocumentationModal';
@@ -165,3 +164,4 @@ describe('DocumentationModal Component', () => {
     expect(screen.getByText(/Requires a valid API key/i)).toBeInTheDocument();
   });
 });
+

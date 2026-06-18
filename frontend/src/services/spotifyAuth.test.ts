@@ -20,7 +20,7 @@ describe('spotifyAuth service', () => {
   });
 
   afterEach(async () => {
-    window.location = originalLocation;
+    window.location = originalLocation as any;
     consoleErrorSpy.mockRestore();
     // Yield to the event loop to ensure any pending finally blocks in spotifyAuth clear refreshPromise
     await new Promise(resolve => setTimeout(resolve, 0));

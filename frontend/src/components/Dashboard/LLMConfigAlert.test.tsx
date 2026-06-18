@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LLMConfigAlert } from './LLMConfigAlert';
@@ -28,3 +27,4 @@ describe('LLMConfigAlert Component', () => {
     expect(screen.getByText('Offline Mode')).toBeInTheDocument();
   });
 });
+

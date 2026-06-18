@@ -106,3 +106,4 @@ describe('TracksList Component', () => {
     expect(songBButton.className).not.toContain('bg-violet-500/10');
   });
 });
+

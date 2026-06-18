@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { IntegrationGuide } from './IntegrationGuide';
@@ -90,3 +89,4 @@ describe('IntegrationGuide Component', () => {
     expect(screen.getByText(/ollama run llama3.2/i)).toBeInTheDocument();
   });
 });
+

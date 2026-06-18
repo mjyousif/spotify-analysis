@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AnalysisProgressPanel } from './AnalysisProgressPanel';
@@ -47,3 +46,4 @@ describe('AnalysisProgressPanel Component', () => {
     expect(screen.getByText('12 / 30 tracks')).toBeInTheDocument();
   });
 });
+

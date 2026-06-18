@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PlaylistGrid } from './PlaylistGrid';
@@ -18,18 +17,16 @@ describe('PlaylistGrid Component', () => {
       name: 'Vibe Playlist One',
       description: 'Lofi chill beats',
       images: [],
-      tracks_count: 25,
-      snapshot_id: 'snap1',
-      owner_name: 'User A'
+      tracks: { total: 25 },
+      owner: { display_name: 'User A' }
     },
     {
       id: 'p2',
       name: 'Rock Classics',
       description: 'Golden age of rock',
       images: [],
-      tracks_count: 50,
-      snapshot_id: 'snap2',
-      owner_name: 'User B'
+      tracks: { total: 50 },
+      owner: { display_name: 'User B' }
     }
   ];
 
@@ -89,12 +86,14 @@ describe('PlaylistGrid Component', () => {
           name: 'Public Synthwave',
           description: 'Outrun and retrowave',
           images: [],
-          tracks_count: 100,
-          snapshot_id: 'snap_pub1',
-          owner_name: 'Public DJ'
+          tracks: { total: 100 },
+          owner: { display_name: 'Public DJ' }
         }
       ],
-      has_more: false
+      has_more: false,
+      total: 1,
+      limit: 10,
+      offset: 0
     });
 
     render(
@@ -120,3 +119,4 @@ describe('PlaylistGrid Component', () => {
     });
   });
 });
+

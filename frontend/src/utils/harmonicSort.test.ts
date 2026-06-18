@@ -67,9 +67,7 @@ describe('harmonicSort Utilities', () => {
           danceability: 0.6,
           instrumentalness: 0,
           speechiness: 0,
-          liveness: 0.1,
-          mode_raw: 1,
-          key_raw: 0
+          liveness: 0.1
         },
         genres: []
       },

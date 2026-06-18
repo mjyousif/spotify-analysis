@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { RecommendationsWidget } from './RecommendationsWidget';
@@ -53,8 +52,7 @@ describe('RecommendationsWidget Component', () => {
       cluster_id: 0,
       playlist_name: 'Ambient Chill Out',
       description: 'Cozy ambient vibes',
-      vibe_summary: 'Slow tempo relaxing sounds',
-      outliers: []
+      vibe_explanation: 'Slow tempo relaxing sounds'
     }
   ];
 
@@ -167,3 +165,4 @@ describe('RecommendationsWidget Component', () => {
     });
   });
 });
+

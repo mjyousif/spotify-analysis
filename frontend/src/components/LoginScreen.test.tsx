@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LoginScreen } from './LoginScreen';
@@ -89,3 +88,4 @@ describe('LoginScreen Component', () => {
     expect(screen.getByText('Spotify OAuth access denied')).toBeInTheDocument();
   });
 });
+

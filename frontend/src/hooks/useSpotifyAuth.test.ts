@@ -48,7 +48,7 @@ describe('useSpotifyAuth Hook', () => {
 
   it('initializes with default login state and verifies backend config', async () => {
     vi.mocked(spotifyAuth.isLoggedIn).mockReturnValue(false);
-    vi.mocked(apiService.getLoginUrl).mockResolvedValue('http://login');
+    vi.mocked(apiService.getLoginUrl).mockResolvedValue({ url: 'http://login' });
 
     const { result } = renderHook(() => useSpotifyAuth());
 
@@ -83,7 +83,7 @@ describe('useSpotifyAuth Hook', () => {
     window.location.search = '?code=badcode';
     vi.mocked(spotifyAuth.isLoggedIn).mockReturnValue(false);
     vi.mocked(spotifyAuth.handleCallback).mockRejectedValue(new Error('Failed login'));
-    vi.mocked(apiService.getLoginUrl).mockResolvedValue('url');
+    vi.mocked(apiService.getLoginUrl).mockResolvedValue({ url: 'url' });
 
     const { result } = renderHook(() => useSpotifyAuth());
 
@@ -95,7 +95,7 @@ describe('useSpotifyAuth Hook', () => {
 
   it('loads playlists and LLM config when isLoggedIn is true', async () => {
     vi.mocked(spotifyAuth.isLoggedIn).mockReturnValue(true);
-    const mockPlaylists = [{ id: 'p1', name: 'Playlist A', description: 'desc', images: [], tracks_count: 10, snapshot_id: '1', owner_name: 'owner' }];
+    const mockPlaylists = [{ id: 'p1', name: 'Playlist A', description: 'desc', images: [], tracks: { total: 10 }, owner: { display_name: 'owner' } }];
     const mockLlmConfig = { llm_active: true, llm_provider: 'openai', llm_model: 'gpt4' };
 
     vi.mocked(apiService.getPlaylists).mockResolvedValue(mockPlaylists);
@@ -146,7 +146,7 @@ describe('useSpotifyAuth Hook', () => {
     vi.mocked(apiService.getPlaylists).mockResolvedValue([]);
     vi.mocked(apiService.getLlmConfig).mockRejectedValue(new Error('LLM fetch failed'));
 
-    const { result } = renderHook(() => useSpotifyAuth());
+    renderHook(() => useSpotifyAuth());
 
     await waitFor(() => {
       expect(apiService.getLlmConfig).toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe('useSpotifyAuth Hook', () => {
   it('initiates OAuth redirect on login submit successfully', async () => {
     vi.mocked(spotifyAuth.isLoggedIn).mockReturnValue(false);
     vi.mocked(spotifyAuth.login).mockResolvedValue(undefined);
-    vi.mocked(apiService.getLoginUrl).mockResolvedValue('url');
+    vi.mocked(apiService.getLoginUrl).mockResolvedValue({ url: 'url' });
 
     const { result } = renderHook(() => useSpotifyAuth());
 
@@ -187,7 +187,7 @@ describe('useSpotifyAuth Hook', () => {
   it('handles login initialization failure', async () => {
     vi.mocked(spotifyAuth.isLoggedIn).mockReturnValue(false);
     vi.mocked(spotifyAuth.login).mockRejectedValue(new Error('Login URL failed'));
-    vi.mocked(apiService.getLoginUrl).mockResolvedValue('url');
+    vi.mocked(apiService.getLoginUrl).mockResolvedValue({ url: 'url' });
 
     const { result } = renderHook(() => useSpotifyAuth());
 

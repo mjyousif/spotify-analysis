@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { LlmErrorModal } from './LlmErrorModal';
@@ -21,3 +20,4 @@ describe('LlmErrorModal Component', () => {
     expect(mockClose).toHaveBeenCalled();
   });
 });
+

@@ -59,3 +59,4 @@ describe('ErrorBoundary Component', () => {
     expect(screen.getByText('Normal Content')).toBeInTheDocument();
   });
 });
+

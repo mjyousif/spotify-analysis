@@ -128,7 +128,6 @@ function App() {
     customLyricsWeight?: number,
     customLyricsStrategy?: string
   ) => {
-    let isSwitching = false;
     activePlaylistIdRef.current = playlistId;
     setSelectedPlaylistId(playlistId);
     setAnalysisLoading(true);
@@ -225,7 +224,6 @@ function App() {
         const errMsg = err.message || err.detail || "Failed to analyze playlist.";
 
         if (algoToUse === 'llm_semantic' && (errMsg.includes("AI Semantic Split failed") || errMsg.includes("LlmSplitterError") || errMsg.includes("LiteLLM is not configured"))) {
-          isSwitching = true;
           setLlmError(errMsg);
           setAlgorithm('kmeans');
           handleRunAnalysis(playlistId, customK, 'kmeans', gWeight, eWeight, pWeight, lWeight);

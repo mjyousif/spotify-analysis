@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { FeatureAveragesWidget } from './FeatureAveragesWidget';
@@ -37,9 +36,8 @@ describe('FeatureAveragesWidget Component', () => {
     {
       cluster_id: 0,
       playlist_name: 'Summer Vibes',
-      playlist_description: 'Upbeat summer tracks',
-      vibe_summary: 'Energetic and sunny',
-      outliers: []
+      description: 'Upbeat summer tracks',
+      vibe_explanation: 'Energetic and sunny'
     }
   ];
 
@@ -81,3 +79,4 @@ describe('FeatureAveragesWidget Component', () => {
     expect(screen.getByText('90 BPM')).toBeInTheDocument(); // Tempo cluster -1 (90)
   });
 });
+

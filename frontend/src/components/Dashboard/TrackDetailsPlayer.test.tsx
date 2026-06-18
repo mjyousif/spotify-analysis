@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TrackDetailsPlayer } from './TrackDetailsPlayer';
@@ -126,3 +125,4 @@ describe('TrackDetailsPlayer Component', () => {
     expect(screen.getByText('80%')).toBeInTheDocument(); // acousticness: 0.8
   });
 });
+
