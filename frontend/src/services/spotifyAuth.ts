@@ -54,6 +54,7 @@ export const spotifyAuth = {
     }
 
     refreshPromise = (async () => {
+      await Promise.resolve();
       try {
         const sessionStr = localStorage.getItem("spotify_session");
         if (!sessionStr) throw new Error("No session found to refresh.");
