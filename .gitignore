@@ -17,6 +17,16 @@ __pycache__/
 dist/
 build/
 
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.lcov
+coverage/
+frontend/coverage/
+
+
 # Node dependencies & frontend builds
 node_modules/
 frontend/node_modules/

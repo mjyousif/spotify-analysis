@@ -18,7 +18,9 @@ class SQLiteCache:
 
     def _init_db(self) -> None:
         # Ensure database directory exists
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         try:
             with self._get_conn() as conn:
                 # Table for track features (permanent cache)
